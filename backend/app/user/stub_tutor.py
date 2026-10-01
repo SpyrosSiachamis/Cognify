@@ -17,7 +17,8 @@ from app.user.ports import (
     TeachRequest,
     TeachResult,
 )
-from app.user.schema import ReplyCheckView, Solution
+from app.session.schema import Solution
+from app.tutor.schema import ReplyCheckView
 from app.verification.schema import StudentCheckResult
 
 # Hardcoded Maria and Nikos story (M1, docs/API_CONTRACT.md) so the frontend can integrate

@@ -129,7 +129,7 @@ class DimensionRating(Record):
 class Diagnosis(Record):
     id: UUID4 = Field(default_factory=uuid4)
     attempt_id: UUID4
-    main_gap: GapType
+    main_gap: GapType | None = None  # None: no gap demonstrated, or not enough evidence yet
     alternatives: list[AlternativeGap] = []
     confidence: Confidence
     dimensions: list[DimensionRating] = []
@@ -211,9 +211,10 @@ class Outcome(Record):
     student_id: UUID4
     session_id: UUID4 | None = None
     concept_id: UUID4
-    gap_type: GapType
-    method: Strategy
-    decision_mode: DecisionMode
+    # None when the session taught nothing (right from the start); no method gets credit.
+    gap_type: GapType | None = None
+    method: Strategy | None = None
+    decision_mode: DecisionMode | None = None
     result: VerdictResult
     independent: bool
     hints_used: int = Field(ge=0)
@@ -228,6 +229,12 @@ class Outcome(Record):
     def verified_needs_independence(self) -> "Outcome":
         if self.result == "VERIFIED" and not self.independent:
             raise ValueError("VERIFIED requires independent=True (a lucky answer is NOT YET)")
+        return self
+
+    @model_validator(mode="after")
+    def method_fields_together(self) -> "Outcome":
+        if len({self.gap_type is None, self.method is None, self.decision_mode is None}) > 1:
+            raise ValueError("gap_type, method and decision_mode are all set or all None")
         return self
 
     @model_validator(mode="after")

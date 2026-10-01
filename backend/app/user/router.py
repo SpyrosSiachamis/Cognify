@@ -5,15 +5,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from app.history import get_store
-from app.user.schema import (
+from app.session.schema import (
     AttemptResponse,
     ExitResponse,
-    LearnerView,
     SessionStartRequest,
     SessionStartResponse,
-    StrategyView,
     StudentAttempt,
 )
+from app.user.schema import LearnerView, StrategyView
 from app.user.service import SessionService
 from app.user.stub_tutor import StubTutor
 
