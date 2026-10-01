@@ -7,6 +7,7 @@ export type RoomElements = {
   motes: HTMLCanvasElement;
   sparks: HTMLCanvasElement;
   cursor: HTMLElement;
+  veil: HTMLElement;
   flash: HTMLElement;
 };
 
@@ -81,8 +82,7 @@ class Room {
     this.cy = this.ty = innerHeight * 0.26;
     this.moved = false;
     this.paint();
-    el.stage.style.setProperty("--cx", this.cx + "px");
-    el.stage.style.setProperty("--cy", this.cy + "px");
+    el.veil.style.transform = `translate(${this.cx}px,${this.cy}px)`;
     el.cursor.style.transform = `translate(${this.cx}px,${this.cy}px)`;
     el.cursor.style.opacity = this.touch ? "1" : "0";
     cancelAnimationFrame(this.raf);
@@ -209,8 +209,8 @@ class Room {
   private sizeMotes() {
     if (!this.el) return;
     // The motes canvas is redrawn every frame, so keep it at normal resolution: the dots are tiny anyway.
-    this.mx = sizeCanvas(this.el.motes, 1);
-    this.motes = Array.from({ length: Math.round(innerWidth / 18) }, () => ({
+    this.mx = sizeCanvas(this.el.motes, 0.75);
+    this.motes = Array.from({ length: Math.round(innerWidth / 24) }, () => ({
       x: Math.random() * innerWidth,
       y: Math.random() * innerHeight,
       r: 0.5 + Math.random() * 1.7,
@@ -224,14 +224,14 @@ class Room {
     const el = this.el;
     const mx = this.mx;
     if (!el || !mx) return;
-    // About 30 frames a second is plenty for drifting dust and a slow light, and halves the work.
+    // About 24 frames a second is plenty for drifting dust and a slow light.
     const elapsed = t - this.last;
-    if (elapsed < 31) {
+    if (elapsed < 40) {
       this.raf = requestAnimationFrame(this.frame);
       return;
     }
     this.last = t;
-    const steps = Math.min(elapsed / 16.67, 4); // how many 60 fps frames this one stands for
+    const steps = Math.min(elapsed / 16.67, 5); // how many 60 fps frames this one stands for
     if (this.touch && !this.reduce) {
       // Touch screens have no cursor, so the light drifts by itself.
       this.tx = innerWidth * (0.5 + 0.38 * Math.sin(t / 5200));
@@ -243,8 +243,8 @@ class Room {
       const ease = 1 - Math.pow(1 - 0.09, steps);
       this.cx += dx * ease;
       this.cy += dy * ease;
-      el.stage.style.setProperty("--cx", this.cx.toFixed(1) + "px");
-      el.stage.style.setProperty("--cy", this.cy.toFixed(1) + "px");
+      // The dark veil has a soft hole in it; moving it is a cheap GPU move, not a repaint.
+      el.veil.style.transform = `translate(${this.cx.toFixed(1)}px,${this.cy.toFixed(1)}px)`;
       el.cursor.style.transform = `translate(${this.cx.toFixed(1)}px,${this.cy.toFixed(1)}px)`;
       const nx = this.cx / innerWidth - 0.5;
       const ny = this.cy / innerHeight - 0.5;
