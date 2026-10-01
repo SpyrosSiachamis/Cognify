@@ -6,6 +6,18 @@ import { room } from "@/lib/room";
 import { useApp } from "./AppProvider";
 import { Icon } from "./Icons";
 
+/** The scalloped wax outline, centred on the seal's rings at (150, 150): radius 132 with 12 bumps of 10.
+    Computed once from geometry, so it is always centred and renders the same on the server and the client. */
+function waxOutline(cx = 150, cy = 150, radius = 132, bumps = 12, depth = 10, samples = 240): string {
+  const points = Array.from({ length: samples }, (_, i) => {
+    const a = (2 * Math.PI * i) / samples;
+    const r = radius + depth * Math.cos(bumps * a);
+    return `${(cx + r * Math.sin(a)).toFixed(1)} ${(cy - r * Math.cos(a)).toFixed(1)}`;
+  });
+  return `M${points.join("L")}Z`;
+}
+const WAX = waxOutline();
+
 /* The wax seal that stamps onto the screen when the backend returns a VERIFIED verdict. */
 export function SealOverlay({ onContinue }: { onContinue: () => void }) {
   const { state } = useApp();
@@ -40,7 +52,7 @@ export function SealOverlay({ onContinue }: { onContinue: () => void }) {
             </radialGradient>
             <path id="ringPath" d="M150,150 m-104,0 a104,104 0 1,1 208,0 a104,104 0 1,1 -208,0" />
           </defs>
-          <path d="M150 8c18 0 22 10 38 14s28-2 38 10 2 24 10 38 20 18 18 36-14 18-14 36 12 26 2 40-24 6-36 16-12 26-30 30-26-8-42-8-24 12-40 4-10-26-24-36-28-4-36-20 6-24 0-40-18-22-10-38 22-12 30-26 2-30 16-40 26 2 42-2S132 8 150 8z" fill="url(#wax)" />
+          <path d={WAX} fill="url(#wax)" />
           <circle cx="150" cy="150" r="118" fill="none" style={{ stroke: "var(--accent-2)" }} strokeOpacity=".6" strokeWidth="1.5" />
           <circle cx="150" cy="150" r="88" fill="none" style={{ stroke: "var(--accent-2)" }} strokeOpacity=".6" strokeWidth="1.5" />
           <g className="seal-ring">

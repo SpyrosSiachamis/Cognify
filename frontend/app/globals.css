@@ -307,7 +307,7 @@ h3{font-family:var(--f-display);font-weight:560;font-size:21px;line-height:1.15;
 .seal-copy{opacity:0}
 .seal-wrap.show .seal-copy{animation:enter .8s both 1s}
 .seal-copy .big{font-family:var(--f-display);font-weight:560;font-size:clamp(36px,5.4vw,62px);line-height:1;color:var(--on-dark);letter-spacing:-.02em}
-.seal-copy p{font-family:var(--f-voice);font-style:italic;font-size:21px;color:var(--on-dark-soft);margin:12px 0 24px}
+.seal-copy p{font-family:var(--f-voice);font-style:italic;font-size:21px;color:var(--on-dark-soft);margin:12px auto 24px;max-width:min(560px,86vw);text-wrap:pretty}
 
 /* ============ result ============ */
 .vhead{display:flex;gap:14px;align-items:center;flex-wrap:wrap}

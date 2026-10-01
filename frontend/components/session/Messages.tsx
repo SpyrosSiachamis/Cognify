@@ -18,7 +18,8 @@ export function TutorMsg({ paragraphs }: { paragraphs: Rich[] | null }) {
       <div className="bub">
         {paragraphs ? (
           paragraphs.map((p, i) => (
-            <p key={i}>
+            // pre-line keeps the backend's line breaks (lists, small tables) instead of running them together
+            <p key={i} style={{ whiteSpace: "pre-line" }}>
               <RichText value={p} />
             </p>
           ))
