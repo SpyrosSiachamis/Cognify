@@ -43,7 +43,7 @@ Design in brief: the student talks to one tutor interface. A **tutor agent** spl
 
 **`LearnerView`**: student, seeded flag, concepts each with state and evidence lines.
 
-**`StrategyView`**: student, seeded flag, one row per gap and method with uses, independent successes and experiments.
+**`StrategyView`**: student, seeded flag, one row per gap and method with uses, independent successes and experiments, plus `methods`: one overall row per method (uses and independent successes summed across gap types).
 
 **Error shape**: code, message, retryable.
 
@@ -263,6 +263,11 @@ After the second NOT YET the same shape is returned with `session_over: true`, a
     { "gap": "recognition", "method": "visual_decomposition", "uses": 9, "independent_successes": 7, "experiments": 0 },
     { "gap": "recognition", "method": "worked_example", "uses": 7, "independent_successes": 4, "experiments": 0 },
     { "gap": "recognition", "method": "socratic", "uses": 5, "independent_successes": 3, "experiments": 0 }
+  ],
+  "methods": [
+    { "method": "visual_decomposition", "uses": 9, "independent_successes": 7 },
+    { "method": "worked_example", "uses": 7, "independent_successes": 4 },
+    { "method": "socratic", "uses": 5, "independent_successes": 3 }
   ]
 }
 ```

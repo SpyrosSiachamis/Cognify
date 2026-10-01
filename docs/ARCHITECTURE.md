@@ -76,7 +76,7 @@ The agent must call this tool after diagnosing. It is plain code, not AI.
 Rules, in order:
 
 1. **No history for this gap type:** use the default method for that gap (`cold_start`).
-2. **Choose the best known method:** highest independent-success rate for this student and gap type, with few-use results discounted.
+2. **Choose the best known method:** highest score for this student and gap type, where score = (independent successes + 1) / (uses + 2). This counts every method as if it had already failed once and succeeded once, so a lucky 1 of 1 (0.67) does not beat a solid 7 of 9 (0.73). Ties go to the method with more uses. The screen still shows the raw counts.
 3. **Experiment check.** Replace the best method with a challenger when all of these hold:
    - roughly 1 in 5 Master sessions (a demo flag can force it),
    - the previous session on this gap was not already an experiment,

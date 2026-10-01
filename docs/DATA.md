@@ -37,7 +37,8 @@ Other moves between strong, weak and fragile follow the diagnosis evidence. Deta
 
 ## Reads the app needs
 
-- Best method per gap type for a learner (most independent successes, with the counts).
+- Best method per gap type for a learner: the highest smoothed score, (independent successes + 1) / (uses + 2), with the raw counts kept. Ties go to the method with more uses.
+- Overall counts per method (uses and independent successes summed across gap types) for the How You Learn view.
 - Last success date per method (old evidence expires, SPEC section 5).
 - Follow-up fingerprints this learner has already seen.
 - The two views: `GET /api/learner/{student_id}` and `GET /api/strategies/{student_id}`.
