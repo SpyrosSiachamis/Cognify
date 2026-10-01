@@ -23,7 +23,8 @@ reasoning_agent = Agent(
     output_type=ReasoningDraft,
     deps_type=ReasoningInput,
     instructions=INSTRUCTIONS,
-    retries=1,
+    # One retry for the hard rules, plus one so an ask-once recheck never uses up the hard rules' retry.
+    retries=2,
     # Diagnosis should be repeatable, not creative.
     model_settings={"temperature": 0},
     name="tutor_reasoning",
@@ -31,7 +32,7 @@ reasoning_agent = Agent(
 
 
 def apply_rules(
-    diagnosis: ReasoningDraft | TutorDiagnosis, attempt: str, check_gap_step: bool = True
+    diagnosis: ReasoningDraft | TutorDiagnosis, attempt: str, recheck: bool = True
 ) -> TutorDiagnosis:
     """Deterministic rules on top of the model's reading. They keep "not observed" apart from "missing".
 
@@ -44,7 +45,13 @@ def apply_rules(
       the student's real reasoning is still evidence, so the model's gap is kept.
     - No gap found and no step wrong: the missing steps are steps the student did not narrate, not a
       gap, so they are dropped. A solution that really lacks a step keeps it, because the model names a gap.
-    - A wrong step needs its error stated (what the student did, what it gives, what is asked).
+    - A wrong step needs its error stated (what the student did, what it gives, what is asked), and an
+      error belongs to a wrong step: when no step is wrong after these rules, there is no error to teach.
+
+    Two consistency checks ask the model once to look again (recheck), and its second answer stands:
+    - A step marked both wrong and missing: wrong must mean false in itself, not unfinished.
+    - A concept gap is a wrong belief, so it shows as a wrong step; unfinished work alone is not one.
+    - A gap must show at the step where that kind of gap lives.
     """
     observed = [
         Step(role=s.role, status=s.status, quote=s.quote)
@@ -70,9 +77,31 @@ def apply_rules(
             "a step is marked wrong but error is empty. State the error at that step (student_did, "
             "actually_gives, asked_for, mismatch), or mark the step correct if the student's work there holds"
         )
+    if not any(s.status == "wrong" for s in update["steps"]):
+        update["error"] = None
     result = TutorDiagnosis.model_validate({**diagnosis.model_dump(), **{k: v for k, v in update.items()}})
+    # Unfinished is not wrong. A step the model calls both wrong and not yet done is usually correct work
+    # so far with the rest still to do; the model is asked to confirm the wrong label once.
+    wrong = [s for s in result.steps if s.status == "wrong"]
+    unfinished = [s for s in wrong if any(m.role == s.role and m.status == "missing" for m in result.steps)]
+    if recheck and unfinished:
+        role = unfinished[0].role
+        raise ValueError(
+            f"{role} is marked both wrong and missing. Wrong means what the student wrote at {role} is false in "
+            "itself (a false value or claim, an invalid operation, or a result presented as something it is not). "
+            f"If what they wrote at {role} is true so far and only unfinished, mark that part correct, keep the "
+            "part still to do as missing, set error to null if no step is wrong, and choose the gap at the part "
+            "they have not done. If it is false, keep it wrong"
+        )
+    if recheck and result.main_gap == "concept" and not wrong:
+        raise ValueError(
+            "main_gap is concept but no step is wrong. A concept gap is a wrong belief the student states or uses, "
+            "so it shows as a wrong step. Mark the step where the wrong belief shows as wrong and state its error, "
+            "or, if the student's work is true so far and only unfinished, choose the gap at the step they have "
+            "not done"
+        )
     # A gap must show where that kind of gap lives (for example a recognition gap at choose_method).
-    roles = GAP_STEPS.get(result.main_gap, ()) if result.main_gap and check_gap_step else ()
+    roles = GAP_STEPS.get(result.main_gap, ()) if result.main_gap and recheck else ()
     if roles and any(s.role in roles and s.status == "correct" for s in result.steps) and not any(
         s.role in roles and s.status != "correct" for s in result.steps
     ):
@@ -88,9 +117,9 @@ def apply_rules(
 def follow_the_rules(ctx: RunContext[ReasoningInput], output: ReasoningDraft) -> ReasoningDraft:
     """A proposal the rules cannot turn into a valid diagnosis goes back to the model once."""
     try:
-        # The gap-step consistency check asks once; a second disagreement is accepted rather than
+        # The consistency checks ask once; a second disagreement is accepted rather than
         # throwing the whole diagnosis away.
-        apply_rules(output, ctx.deps.attempt, check_gap_step=ctx.retry == 0)
+        apply_rules(output, ctx.deps.attempt, recheck=ctx.retry == 0)
     except ValueError as exc:
         raise ModelRetry(f"{exc}. Return the complete output again, with every field.") from exc
     return output
@@ -117,4 +146,4 @@ async def diagnose(
     if not proposed.ok or proposed.value is None:
         return GatewayFallback(value=INSUFFICIENT, failure=proposed.failure, detail=proposed.detail)
     # The validator already accepted this proposal, so the same rules turn it into the diagnosis.
-    return GatewayOk(value=apply_rules(proposed.value, reasoning_input.attempt, check_gap_step=False))
+    return GatewayOk(value=apply_rules(proposed.value, reasoning_input.attempt, recheck=False))

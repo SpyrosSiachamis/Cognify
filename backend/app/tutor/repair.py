@@ -67,7 +67,9 @@ def assess_repair(prior: PriorDiagnosis | None, current: TutorDiagnosis) -> Repa
     gap = prior.main_gap
     before = gap_step(prior.steps, gap)
     all_correct = bool(current.steps) and all(s.status == "correct" for s in current.steps)
-    now = next((s for s in current.steps if before and s.role == before.role), None)
+    # A role can be listed twice (correct work so far, then the part still to do): the part still to do decides.
+    at_role = [s for s in current.steps if before and s.role == before.role]
+    now = next((s for s in at_role if s.status != "correct"), at_role[0] if at_role else None)
 
     if not all_correct:
         if before is None:

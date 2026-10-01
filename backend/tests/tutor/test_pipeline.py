@@ -270,7 +270,7 @@ def test_a_failing_verifier_never_lets_a_reply_through(store):
 def test_invalid_diagnosis_twice_becomes_a_probe_not_a_crash(store, broken):
     model = ScriptedModel([broken])
     trace, result = run(store, model)
-    assert model.reasoning_calls == 2  # one retry
+    assert model.reasoning_calls == 3  # two retries, then the safe fallback
     assert trace.diagnosis_failure.startswith("invalid_output")
     assert result.output.evidence == "insufficient" and trace.mode == "probe"
 
@@ -608,3 +608,87 @@ def test_an_implied_step_without_a_quote_is_not_observed_not_a_failure(store):
     assert model.reasoning_calls == 1  # accepted first time: no validation failure, no retry
     assert [(s.role, s.status) for s in result.output.steps] == [("compute", "correct")]
     assert trace.mode == "acknowledge" and trace.diagnosis_failure is None
+
+
+# ---- unfinished is not wrong: correct work that stops before the next operation ----
+
+MEAN_PROBLEM = "Find the mean of 4, 8 and 9."
+MEAN_ATTEMPT = "I added 4, 8 and 9 and got 21, but I'm not sure what to do next."
+SUMMED = ("compute", "correct", "I added 4, 8 and 9 and got 21")
+SUM_CALLED_WRONG = ("compute", "wrong", "I added 4, 8 and 9 and got 21")
+STILL_TO_DO = ("compute", "missing", None)
+
+
+def mean_request():
+    return teach_request(MEAN_ATTEMPT, problem=MEAN_PROBLEM, concept_name="Mean")
+
+
+def test_correct_intermediate_work_that_stops_is_correct_then_missing(store):
+    # One role, listed twice: the work done holds, the next operation is still to do.
+    model = ScriptedModel([diagnosis(SUMMED, STILL_TO_DO, gap="procedure")])
+    trace, result = run(store, model, request=mean_request())
+    assert model.reasoning_calls == 1
+    assert [(s.role, s.status) for s in result.output.steps] == [("compute", "correct"), ("compute", "missing")]
+    assert result.output.error is None and trace.mode == "teach"
+    assert (trace.gap_step.role, trace.gap_step.status) == ("compute", "missing")
+
+
+def test_wrong_work_followed_by_a_step_not_done_is_rechecked_once(store):
+    called_wrong = {**diagnosis(SUM_CALLED_WRONG, STILL_TO_DO, gap="concept"), "error": ERROR}
+    model = ScriptedModel([called_wrong, diagnosis(SUMMED, STILL_TO_DO, gap="procedure")])
+    trace, result = run(store, model, request=mean_request())
+    assert model.reasoning_calls == 2  # asked once whether the work is false or only unfinished
+    assert not any(s.status == "wrong" for s in result.output.steps)
+    assert result.output.error is None and result.output.main_gap == "procedure"
+
+
+def test_a_false_step_before_steps_not_done_is_not_rechecked(store):
+    # A genuine error the student stopped after: the wrong label stands at once.
+    stopped_after_error = {**diagnosis(("choose_method", "wrong", "I added 4, 8 and 9"), ("compute", "missing", None),
+                                       gap="procedure"), "error": ERROR}
+    model = ScriptedModel([stopped_after_error])
+    trace, result = run(store, model, request=mean_request())
+    assert model.reasoning_calls == 1
+    assert ("choose_method", "wrong") in [(s.role, s.status) for s in result.output.steps]
+
+
+def test_work_that_is_really_false_stays_wrong_after_the_recheck(store):
+    false_sum = ("compute", "wrong", "I added 4, 8 and 9 and got 21")
+    really_wrong = {**diagnosis(false_sum, STILL_TO_DO, gap="procedure"), "error": ERROR}
+    model = ScriptedModel([really_wrong, really_wrong])
+    trace, result = run(store, model, request=mean_request())
+    assert model.reasoning_calls == 2 and trace.diagnosis_failure is None
+    assert ("compute", "wrong") in [(s.role, s.status) for s in result.output.steps]
+    assert result.output.error is not None
+
+
+def test_an_error_without_a_wrong_step_is_dropped(store):
+    # The only "wrong" step is the student saying they are not sure, so it becomes missing; its error goes with it.
+    stall_called_wrong = {**diagnosis(("compute", "correct", "got 21"),
+                                      ("interpret", "wrong", "I'm not sure what to do next"), gap="recognition"),
+                          "error": ERROR}
+    trace, result = run(store, ScriptedModel([stall_called_wrong]), request=mean_request())
+    assert ("interpret", "missing") in [(s.role, s.status) for s in result.output.steps]
+    assert result.output.error is None
+
+
+def test_a_role_listed_twice_is_repaired_only_when_the_part_still_to_do_is_done():
+    prior = PriorDiagnosis(steps=[Step(role="compute", status="correct", quote="got 21"),
+                                  Step(role="compute", status="missing")], main_gap="procedure")
+    still_unfinished = reading(Step(role="compute", status="correct", quote="the total is 21"),
+                               Step(role="compute", status="missing"), gap="recognition")
+    check = assess_repair(prior, still_unfinished)
+    assert not check.repaired and "compute is still missing" in check.reason
+
+
+def test_a_concept_gap_with_no_wrong_step_is_rechecked_once(store):
+    model = ScriptedModel([diagnosis(SUMMED, STILL_TO_DO, gap="concept"), diagnosis(SUMMED, STILL_TO_DO, gap="procedure")])
+    trace, result = run(store, model, request=mean_request())
+    assert model.reasoning_calls == 2 and result.output.main_gap == "procedure"
+
+
+def test_a_concept_gap_kept_on_the_recheck_stands(store):
+    model = ScriptedModel([diagnosis(SUMMED, STILL_TO_DO, gap="concept")])
+    trace, result = run(store, model, request=mean_request())
+    assert model.reasoning_calls == 2 and trace.diagnosis_failure is None
+    assert result.output.main_gap == "concept"  # the model's second answer is accepted, not overridden

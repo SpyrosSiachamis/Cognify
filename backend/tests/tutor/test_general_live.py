@@ -131,3 +131,27 @@ def test_real_problems_still_get_a_diagnosis(store, problem, text):
     assert trace.mode == "teach"
     if any(s.status == "wrong" for s in result.output.steps):
         assert result.output.error is not None, "a wrong step comes with its stated error"
+
+
+# ---- unfinished is not wrong: correct intermediate work that stops before the next operation ----
+
+STOPS_AFTER_CORRECT_WORK = [
+    ("Given matrix A = [[2, 1], [-1, 3]] and vector x = [4, 2], calculate A × x.",
+     "I multiplied each row of A by x entry by entry and got [8, 2] and [-4, 6]. "
+     "I don't know how to turn those into a single vector.", "[8, 2]"),
+    ("Find the mean of 4, 8 and 9.", "I added 4, 8 and 9 and got 21, but I'm not sure what to do next.", "21"),
+    ("Work out 1/3 + 1/4.", "I rewrote them as 4/12 and 3/12, but I don't know how to finish.", "4/12"),
+    (CAR, "Its final speed is 2 x 5 = 10 m/s, so its average speed is 5 m/s. I'm stuck on the distance.", "5 m/s"),
+]
+
+
+@pytest.mark.parametrize(("problem", "text", "done"), STOPS_AFTER_CORRECT_WORK,
+                         ids=["matrix", "mean", "fractions", "kinematics"])
+def test_correct_work_that_stops_is_unfinished_not_wrong(store, problem, text, done):
+    setup, result, trace = teach(store, problem, text)
+    steps = result.output.steps
+    assert any(s.status == "correct" and done in (s.quote or "") for s in steps), "the correct work done is credited"
+    assert not any(s.status == "wrong" for s in steps), "unfinished work is not wrong"
+    assert result.output.error is None
+    assert any(s.status == "missing" for s in steps) and trace.mode == "teach"
+    assert result.output.main_gap not in (None, "concept"), "stopping is not a misconception"

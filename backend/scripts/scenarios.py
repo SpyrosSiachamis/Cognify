@@ -17,3 +17,12 @@ MARIA_TURNS = [
     "So I do not need the time at all? I could use v^2 = u^2 - 2gh with v = 0 and solve for h.",
     "v^2 = u^2 - 2gh with v = 0 and u = 15: h = 225 / 19.6, about 11.5 m above the balcony.",
 ]
+
+# A general-subject check (linear algebra): the student multiplies entry by entry and is stuck on
+# combining the products. The chat sends this attempt first, then you continue as the student.
+MATRIX_PROBLEM = "Given matrix A = [[2, 1], [-1, 3]] and vector x = [4, 2], calculate A × x."
+
+MATRIX_ATTEMPT = (
+    "I multiplied each row of A by x entry by entry and got [8, 2] and [-4, 6]. "
+    "I don't know how to turn those into a single vector."
+)
