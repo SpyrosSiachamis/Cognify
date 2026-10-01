@@ -1,0 +1,105 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
+import type { TabId } from "@/lib/state";
+import { useApp } from "./AppProvider";
+import { Icon } from "./Icons";
+import { OverviewTab } from "./drawer/OverviewTab";
+import { ReasoningTab } from "./drawer/ReasoningTab";
+import { TeachingTab } from "./drawer/TeachingTab";
+import { UnderstandingTab } from "./drawer/UnderstandingTab";
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "reasoning", label: "Your reasoning" },
+  { id: "understanding", label: "Understanding" },
+  { id: "teaching", label: "Teaching" },
+];
+
+const CONTENT: Record<TabId, () => ReactNode> = {
+  overview: () => <OverviewTab />,
+  reasoning: () => <ReasoningTab />,
+  understanding: () => <UnderstandingTab />,
+  teaching: () => <TeachingTab />,
+};
+
+/* The right-hand sheet where all the analysis lives. ESC closes it and Tab stays inside it. */
+export function ProgressDrawer({ onReset }: { onReset: () => void }) {
+  const { state, dispatch } = useApp();
+  const open = state.sheetOpen;
+  const sheet = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const opener = useRef<Element | null>(null);
+
+  const closeSheet = () => dispatch({ type: "sheet", open: false });
+
+  // On open: remember what had focus, scroll to the top and focus the close button. On close: give focus back.
+  useEffect(() => {
+    if (!open) return;
+    opener.current = document.activeElement;
+    body.current?.scrollTo({ top: 0 });
+    const t = setTimeout(() => close.current?.focus(), 350);
+    return () => {
+      clearTimeout(t);
+      (opener.current as HTMLElement | null)?.focus?.();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return closeSheet();
+      if (e.key !== "Tab" || !sheet.current) return;
+      const items = Array.from(sheet.current.querySelectorAll<HTMLElement>('button,[tabindex="0"],a[href]')).filter((x) => x.offsetParent !== null || x instanceof SVGElement);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  return (
+    <>
+      <div className={`scrim${open ? " show" : ""}`} onClick={closeSheet} />
+      <aside className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={state.backend ? "backend" : "seeded"}>
+        <div className="sheet-head">
+          <div>
+            <h2>
+              Your <em>progress</em>
+            </h2>
+            <p>Everything Cognify has learned about how you think.</p>
+          </div>
+          <button className="xbtn" type="button" ref={close} aria-label="Close progress" onClick={closeSheet}>
+            <Icon id="i-close" />
+          </button>
+        </div>
+        <div className="tabs" role="tablist">
+          {TABS.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={state.tab === t.id} onClick={() => { dispatch({ type: "tab", tab: t.id }); body.current?.scrollTo({ top: 0 }); }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="sheet-body" ref={body} key={`${state.tab}-${state.sheetRev}`}>
+          {CONTENT[state.tab]()}
+        </div>
+        <div className="sheet-foot">
+          <span>Demo history is labelled “seeded”. Today’s session is live.</span>
+          <button className="btn-ghost" type="button" onClick={onReset}>
+            <Icon id="i-undo" style={{ verticalAlign: -2, marginRight: 6 }} />
+            Reset demo
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}

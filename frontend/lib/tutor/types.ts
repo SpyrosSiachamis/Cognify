@@ -51,7 +51,7 @@ export type Turn = {
 };
 
 // What the student sent. For the fresh problem, text is the equation and answer is the final number.
-export type StudentInput = { text: string; answer?: string };
+export type StudentInput = { text: string; answer?: string; kind?: Widget["kind"] };
 
 export interface MasterSession {
   send(input: StudentInput): Promise<Turn>;

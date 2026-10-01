@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DEMO_PROBLEM } from "@/lib/state";
+import { loadBackendData, recordedTutor } from "@/lib/backend";
 import { scriptedTutor } from "@/lib/tutor/scripted";
 import type { Answer } from "@/lib/tutor/types";
 import { AppProvider, useApp } from "./AppProvider";
 import { Home } from "./Home";
 import { IconSprite } from "./Icons";
+import { ProgressDrawer } from "./ProgressDrawer";
 import { QuickView } from "./QuickView";
 import { ResultView } from "./ResultView";
 import { SealOverlay } from "./SealOverlay";
@@ -15,12 +17,30 @@ import { Toast } from "./Toast";
 import { Room } from "./Room";
 import { TopBar } from "./TopBar";
 
-// The tutor behind the screens. Swap this one line to plug in the real backend.
-const tutor = scriptedTutor;
+// The tutor behind the screens. Swap `scriptedTutor` for the real backend tutor when it exists.
+const baseTutor = scriptedTutor;
 
 function Shell() {
   const { state, dispatch } = useApp();
   const [answer, setAnswer] = useState<Answer | null>(null);
+
+  // Read what the backend knows about the learner. If it cannot be reached we keep the seeded history.
+  const refreshBackend = () => {
+    loadBackendData().then((data) => dispatch({ type: "backend", data }));
+  };
+  useEffect(() => {
+    loadBackendData().then((data) => dispatch({ type: "backend", data }));
+  }, [dispatch]);
+
+  // The Master session is also recorded on the backend; when it verifies the fresh problem we re-read the views.
+  const tutor = useMemo(
+    () =>
+      recordedTutor(baseTutor, (changes) => {
+        dispatch({ type: "verdict", changes });
+        loadBackendData().then((data) => data && dispatch({ type: "backend", data }));
+      }),
+    [dispatch],
+  );
 
   // A soft light follows the pointer across the paper cards.
   useEffect(() => {
@@ -45,6 +65,13 @@ function Shell() {
     if (state.sealOpen) return;
     dispatch({ type: "newProblem" });
   };
+  // "Reset demo": forget today's session and go back to the starting history.
+  const fullReset = () => {
+    dispatch({ type: "sheet", open: false });
+    dispatch({ type: "fullReset" });
+    refreshBackend();
+  };
+
   // From the seal to the result screen: count today's win in the top bar.
   const showResult = () => {
     dispatch({ type: "seal", open: false });
@@ -75,6 +102,7 @@ function Shell() {
         {state.view === "session" && <SessionView tutor={tutor} />}
         {state.view === "result" && <ResultView onNewProblem={newProblem} />}
       </main>
+      <ProgressDrawer onReset={fullReset} />
       <Toast />
       <SealOverlay onContinue={showResult} />
     </>

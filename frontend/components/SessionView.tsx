@@ -159,11 +159,11 @@ export function SessionView({ tutor }: { tutor: TutorService }) {
               return <BuiltCard key={item.id} equation={item.equation} summary={item.summary} />;
             case "widget": {
               const w = item.widget;
-              if (w.kind === "idea") return <IdeaCard key={item.id} widget={w} onSubmit={(text) => submit({ text })} />;
-              if (w.kind === "probe") return <ProbeCard key={item.id} widget={w} done={item.done} onSubmit={(text) => submit({ text })} />;
-              if (w.kind === "question") return <QuestionCard key={item.id} widget={w} done={item.done} feedback={item.feedback} onSubmit={(text) => submit({ text })} />;
-              if (w.kind === "ready") return <ReadyCard key={item.id} widget={w} onSubmit={() => submit({ text: "" })} />;
-              return <TransferCard key={item.id} widget={w} misses={item.misses} onSubmit={(text, answer) => submit({ text, answer })} />;
+              if (w.kind === "idea") return <IdeaCard key={item.id} widget={w} onSubmit={(text) => submit({ text, kind: "idea" })} />;
+              if (w.kind === "probe") return <ProbeCard key={item.id} widget={w} done={item.done} onSubmit={(text) => submit({ text, kind: "probe" })} />;
+              if (w.kind === "question") return <QuestionCard key={item.id} widget={w} done={item.done} feedback={item.feedback} onSubmit={(text) => submit({ text, kind: "question" })} />;
+              if (w.kind === "ready") return <ReadyCard key={item.id} widget={w} onSubmit={() => submit({ text: "", kind: "ready" })} />;
+              return <TransferCard key={item.id} widget={w} misses={item.misses} onSubmit={(text, answer) => submit({ text, answer, kind: "transfer" })} />;
             }
           }
         })}

@@ -11,9 +11,11 @@ export const POLICY: Record<string, StrategyRow[]> = {
   "Running the procedure": [{ s: "Worked example", a: 6, n: 8 }, { s: "Micro-hint", a: 5, n: 9 }, { s: "Socratic questions", a: 3, n: 7 }],
 };
 
-/** The strategy rows for one kind of gap, after today's verified win if there was one. */
-export function policyNow(gap: string, verified: boolean): StrategyRow[] {
+/** The strategy rows for one kind of gap. `live` comes from the backend and wins over the seeded numbers. */
+export function policyNow(gap: string, verified: boolean, live?: Record<string, StrategyRow[]>): StrategyRow[] {
+  if (live?.[gap]) return live[gap].map((r) => ({ ...r }));
   const rows = POLICY[gap].map((r) => ({ ...r }));
+  // No backend: show today's verified win on top of the seeded numbers (7/9 becomes 8/10).
   if (verified && gap === "Words → equation") {
     rows[0].a = 8;
     rows[0].n = 10;

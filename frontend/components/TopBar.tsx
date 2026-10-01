@@ -53,7 +53,7 @@ export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
           className={`btn-progress${state.fresh ? " news" : ""}`}
           type="button"
           aria-haspopup="dialog"
-          onClick={() => dispatch({ type: "sheet", open: true })}
+          onClick={() => dispatch({ type: "sheet", open: true, tab: "overview" })}
         >
           <Icon id="i-chart" />
           <span>Progress</span>

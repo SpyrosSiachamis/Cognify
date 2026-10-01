@@ -10,9 +10,13 @@ import { Spark } from "./Spark";
 
 /* After the seal: what changed for the learner (ladder) and for the teacher (7/9 becomes 8/10). */
 export function ResultView({ onNewProblem }: { onNewProblem: () => void }) {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
+  // The backend's own before and after, when it verified the fresh problem; otherwise the prepared 7/9 to 8/10.
+  const strategy = state.verdict?.strategy;
+  const before = strategy ? strategy.before : { independent_successes: 7, uses: 9 };
+  const after = strategy ? strategy.after : { independent_successes: 8, uses: 10 };
   const [flipped, setFlipped] = useState<boolean[]>(LADDER.map(() => false));
-  const [odo, setOdo] = useState({ a: "7", b: "9", was: "" });
+  const [odoStep, setOdoStep] = useState(0); // 0: before, 1: first number changed, 2: second changed, 3: "was ..." shown
   const [fullSpark, setFullSpark] = useState(false);
 
   useEffect(() => {
@@ -28,9 +32,9 @@ export function ResultView({ onNewProblem }: { onNewProblem: () => void }) {
       if (l[2] !== l[3]) at(800 + i * 280, () => setFlipped((f) => f.map((v, j) => (j === i ? true : v))));
     });
     // The odometer fades each number out and the new one in.
-    at(1200, () => setOdo((o) => ({ ...o, a: "8" })));
-    at(1350, () => setOdo((o) => ({ ...o, b: "10" })));
-    at(1750, () => setOdo((o) => ({ ...o, was: "was 7 / 9" })));
+    at(1200, () => setOdoStep(1));
+    at(1350, () => setOdoStep(2));
+    at(1750, () => setOdoStep(3));
     return () => timers.forEach(clearTimeout);
   }, []);
 
@@ -97,11 +101,11 @@ export function ResultView({ onNewProblem }: { onNewProblem: () => void }) {
           <div>
             <span className="kicker">Visual + Socratic · words → equation</span>
             <div className="odo">
-              <span className="v">{odo.a}</span>
+              <span className="v">{odoStep >= 1 ? after.independent_successes : before.independent_successes}</span>
               <small>/</small>
-              <span className="v">{odo.b}</span>
+              <span className="v">{odoStep >= 2 ? after.uses : before.uses}</span>
               <small>independent</small>
-              <span className="was">{odo.was}</span>
+              <span className="was">{odoStep >= 3 ? `was ${before.independent_successes} / ${before.uses}` : ""}</span>
             </div>
           </div>
           <div className="spark">

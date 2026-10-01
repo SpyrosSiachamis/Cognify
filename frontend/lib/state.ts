@@ -1,5 +1,8 @@
 /* The whole app state in one place. A pure reducer, so it is easy to test and easy to explain. */
 
+import type { BackendData } from "./backend";
+import type { VerdictChanges } from "./api";
+
 export type Theme = "velvet" | "salon";
 export type View = "home" | "quick" | "session" | "result";
 export type Mode = "simple" | "master";
@@ -31,10 +34,13 @@ export type AppState = {
   t0: number;
   run: number; // bumped for every new session so old async work stops
   sheetOpen: boolean;
+  sheetRev: number; // counts openings, so the drawer replays its animations each time
   tab: TabId;
   mapSel: string;
   sealOpen: boolean;
   toast: ToastState;
+  backend: BackendData | null; // what the backend knows about the learner; null = use the seeded history
+  verdict: VerdictChanges | null; // the backend's before/after when it verified the fresh problem
 };
 
 export const initialState: AppState = {
@@ -54,10 +60,13 @@ export const initialState: AppState = {
   t0: 0,
   run: 0,
   sheetOpen: false,
+  sheetRev: 0,
   tab: "overview",
   mapSel: "qm",
   sealOpen: false,
   toast: null,
+  backend: null,
+  verdict: null,
 };
 
 export type Action =
@@ -78,6 +87,8 @@ export type Action =
   | { type: "mapSel"; id: string }
   | { type: "seal"; open: boolean }
   | { type: "toast"; toast: ToastState }
+  | { type: "backend"; data: BackendData | null }
+  | { type: "verdict"; changes: VerdictChanges }
   | { type: "startSession"; now: number }
   | { type: "newProblem" }
   | { type: "fullReset" };
@@ -113,7 +124,7 @@ export function reducer(s: AppState, a: Action): AppState {
     case "sheet":
       // Opening the drawer clears the "something new" dot and the toast.
       return a.open
-        ? { ...s, sheetOpen: true, tab: a.tab ?? s.tab, fresh: false, toast: null }
+        ? { ...s, sheetOpen: true, sheetRev: s.sheetRev + 1, tab: a.tab ?? s.tab, fresh: false, toast: null }
         : { ...s, sheetOpen: false };
     case "tab":
       return { ...s, tab: a.tab };
@@ -123,6 +134,10 @@ export function reducer(s: AppState, a: Action): AppState {
       return { ...s, sealOpen: a.open };
     case "toast":
       return { ...s, toast: a.toast };
+    case "backend":
+      return { ...s, backend: a.data };
+    case "verdict":
+      return { ...s, verdict: a.changes };
     case "startSession":
       return {
         ...s,
@@ -132,6 +147,7 @@ export function reducer(s: AppState, a: Action): AppState {
         thought: "",
         hints: 0,
         log: [],
+        verdict: null,
         t0: a.now,
         dim: false,
         view: "session",
@@ -142,6 +158,7 @@ export function reducer(s: AppState, a: Action): AppState {
       return {
         ...initialState,
         theme: s.theme,
+        backend: s.backend,
         run: s.run + 1,
       };
   }
