@@ -1,5 +1,7 @@
 """A client wired to a fresh seeded store and a scriptable stub tutor."""
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -25,6 +27,7 @@ class ScriptedTutor(StubTutor):
         self.correct = correct
         self.follow_up_texts = list(follow_up_texts or [])
         self.fail = set(fail)
+        self.delay = 0.0  # seconds every agent call takes, to make requests overlap
         self.calls = 0
         self.teach_requests = []
         self.follow_up_requests = []
@@ -36,10 +39,12 @@ class ScriptedTutor(StubTutor):
 
     async def set_up(self, problem, subject):
         self._enter("set_up")
+        await asyncio.sleep(self.delay)
         return await super().set_up(problem, subject)
 
     async def teach(self, request):
         self._enter("teach")
+        await asyncio.sleep(self.delay)
         self.teach_requests.append(request)
         result = await super().teach(request)
         result.output.gap_repaired = request.teach_turns >= self.repair_after
@@ -62,11 +67,11 @@ class ScriptedTutor(StubTutor):
 
 
 class Rig:
-    def __init__(self, tutor=None):
+    def __init__(self, tutor=None, timeout=None):
         self.store = InMemoryHistory()
         seed_store(self.store)
         self.tutor = tutor or ScriptedTutor()
-        service = SessionService(self.tutor, self.store)
+        service = SessionService(self.tutor, self.store, **({} if timeout is None else {"timeout": timeout}))
         app.dependency_overrides[get_service] = lambda: service
         self.client = TestClient(app)
 
