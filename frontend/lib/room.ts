@@ -1,0 +1,306 @@
+/* The room: a library in the dark, revealed by your cursor.
+   Ported from docs/cognify-prototype.html. All drawing lives here; React only supplies the elements. */
+
+export type RoomElements = {
+  stage: HTMLElement;
+  scene: HTMLCanvasElement;
+  motes: HTMLCanvasElement;
+  sparks: HTMLCanvasElement;
+  cursor: HTMLElement;
+  flash: HTMLElement;
+};
+
+type Mote = { x: number; y: number; r: number; vx: number; vy: number; p: number };
+type Spark = { x: number; y: number; vx: number; vy: number; life: number; r: number; c: number[] };
+
+const root = () => document.documentElement;
+const cssVar = (v: string) => getComputedStyle(root()).getPropertyValue(v).trim();
+const rgb = (h: string): number[] => {
+  const n = parseInt(h.replace("#", ""), 16);
+  return [n >> 16, (n >> 8) & 255, n & 255];
+};
+const rgba = (h: string, a: number) => {
+  const c = rgb(h);
+  return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+};
+const shade = (h: string, f: number) => {
+  const c = rgb(h).map((v) => Math.max(0, Math.min(255, v * f)) | 0);
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+};
+// Small seeded random generator, so the bookshelves look the same every time.
+const rng = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+
+function sizeCanvas(c: HTMLCanvasElement, scale: number) {
+  const dpr = Math.min(window.devicePixelRatio || 1, scale);
+  c.width = Math.round(innerWidth * dpr);
+  c.height = Math.round(innerHeight * dpr);
+  const x = c.getContext("2d")!;
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return x;
+}
+
+class Room {
+  private el: RoomElements | null = null;
+  private reduce = false;
+  private touch = false;
+  private ambient = true;
+  private raf = 0;
+  private motes: Mote[] = [];
+  private mx: CanvasRenderingContext2D | null = null;
+  private cx = 0;
+  private cy = 0;
+  private tx = 0;
+  private ty = 0;
+  private moved = false;
+  private resizeTimer = 0;
+  private themeTimer = 0;
+
+  private onMove = (e: PointerEvent) => {
+    if (e.pointerType === "touch" || this.reduce || !this.el) return;
+    this.tx = e.clientX;
+    this.ty = e.clientY;
+    if (!this.moved) {
+      this.moved = true;
+      this.el.cursor.style.opacity = this.ambient ? "1" : "0";
+    }
+  };
+
+  private onResize = () => {
+    clearTimeout(this.resizeTimer);
+    this.resizeTimer = window.setTimeout(() => this.paint(), 160);
+  };
+
+  /** Start drawing. Returns a function that stops everything again. */
+  start(el: RoomElements): () => void {
+    this.el = el;
+    this.reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.touch = matchMedia("(hover: none)").matches;
+    this.cx = this.tx = innerWidth * 0.72;
+    this.cy = this.ty = innerHeight * 0.26;
+    this.moved = false;
+    this.paint();
+    el.stage.style.setProperty("--cx", this.cx + "px");
+    el.stage.style.setProperty("--cy", this.cy + "px");
+    el.cursor.style.transform = `translate(${this.cx}px,${this.cy}px)`;
+    el.cursor.style.opacity = this.touch ? "1" : "0";
+    cancelAnimationFrame(this.raf);
+    this.raf = requestAnimationFrame(this.frame);
+    addEventListener("pointermove", this.onMove, { passive: true });
+    addEventListener("resize", this.onResize);
+    return () => {
+      cancelAnimationFrame(this.raf);
+      clearTimeout(this.resizeTimer);
+      clearTimeout(this.themeTimer);
+      removeEventListener("pointermove", this.onMove);
+      removeEventListener("resize", this.onResize);
+      this.el = null;
+    };
+  }
+
+  private paint() {
+    this.drawScene();
+    this.sizeMotes();
+  }
+
+  private drawScene() {
+    if (!this.el) return;
+    const W = innerWidth;
+    const H = innerHeight;
+    const x = sizeCanvas(this.el.scene, 1.25);
+    const r = rng(20261001);
+    const spines = ["--sp1", "--sp2", "--sp3", "--sp4", "--sp5", "--sp6"].map(cssVar);
+    const accent = cssVar("--accent");
+    const wood = cssVar("--sp3");
+    const g = x.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, cssVar("--ground-3"));
+    g.addColorStop(0.6, cssVar("--ground-2"));
+    g.addColorStop(1, cssVar("--ground"));
+    x.fillStyle = g;
+    x.fillRect(0, 0, W, H);
+    const shelfH = Math.max(176, H / 4.3);
+    for (let y = 6; y < H + shelfH; y += shelfH) {
+      let px = -14;
+      while (px < W + 20) {
+        if (r() < 0.035) {
+          px += 26 + r() * 52;
+          continue;
+        }
+        const w = 11 + r() * 24;
+        const h = shelfH * (0.56 + r() * 0.34);
+        const c = spines[(r() * spines.length) | 0];
+        const lean = r() < 0.05 ? (r() - 0.5) * 0.3 : 0;
+        const base = y + shelfH - 17;
+        x.save();
+        x.translate(px + w / 2, base);
+        x.rotate(lean);
+        const gg = x.createLinearGradient(-w / 2, 0, w / 2, 0);
+        gg.addColorStop(0, shade(c, 0.5));
+        gg.addColorStop(0.3, shade(c, 1.2));
+        gg.addColorStop(0.7, shade(c, 0.92));
+        gg.addColorStop(1, shade(c, 0.42));
+        x.fillStyle = gg;
+        x.fillRect(-w / 2, -h, w, h);
+        x.fillStyle = rgba(accent, 0.16);
+        x.fillRect(-w / 2, -h, w, 2);
+        if (r() < 0.75) {
+          x.fillStyle = rgba(accent, 0.65);
+          x.fillRect(-w / 2 + 1.5, -h * 0.16, w - 3, 2);
+          x.fillRect(-w / 2 + 1.5, -h * 0.82, w - 3, 2);
+          if (r() < 0.5) x.fillRect(-w / 2 + 3, -h * 0.52, w - 6, h * 0.07);
+        }
+        x.restore();
+        px += w + (r() < 0.15 ? 2.5 : 0.5);
+      }
+      const wg = x.createLinearGradient(0, y + shelfH - 17, 0, y + shelfH);
+      wg.addColorStop(0, shade(wood, 1.15));
+      wg.addColorStop(1, shade(wood, 0.38));
+      x.fillStyle = wg;
+      x.fillRect(0, y + shelfH - 17, W, 17);
+      x.fillStyle = rgba(accent, 0.25);
+      x.fillRect(0, y + shelfH - 17, W, 1.5);
+      x.fillStyle = "rgba(0,0,0,.5)";
+      x.fillRect(0, y + shelfH, W, 8);
+    }
+    // Soft bokeh lamps, no window or frame: the room stays an atmosphere, not a picture.
+    x.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 46; i++) {
+      const cx = W * (0.1 + 0.85 * r());
+      const cy = H * (0.55 * r() * r());
+      const rad = 12 + r() * 46;
+      const a = 0.05 + r() * 0.14;
+      const rg = x.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      rg.addColorStop(0, rgba(accent, a));
+      rg.addColorStop(0.75, rgba(accent, a * 0.55));
+      rg.addColorStop(1, rgba(accent, 0));
+      x.fillStyle = rg;
+      x.beginPath();
+      x.arc(cx, cy, rad, 0, 6.3);
+      x.fill();
+    }
+    x.globalCompositeOperation = "source-over";
+  }
+
+  // Dust motes, brighter where the light is.
+  private sizeMotes() {
+    if (!this.el) return;
+    this.mx = sizeCanvas(this.el.motes, 1.25);
+    this.motes = Array.from({ length: Math.round(innerWidth / 18) }, () => ({
+      x: Math.random() * innerWidth,
+      y: Math.random() * innerHeight,
+      r: 0.5 + Math.random() * 1.7,
+      vx: (Math.random() - 0.3) * 0.12,
+      vy: -0.04 - Math.random() * 0.15,
+      p: Math.random() * 6.28,
+    }));
+  }
+
+  private frame = (t: number) => {
+    const el = this.el;
+    const mx = this.mx;
+    if (!el || !mx) return;
+    if (this.touch && !this.reduce) {
+      // Touch screens have no cursor, so the light drifts by itself.
+      this.tx = innerWidth * (0.5 + 0.38 * Math.sin(t / 5200));
+      this.ty = innerHeight * (0.36 + 0.26 * Math.cos(t / 6900));
+    }
+    const dx = this.tx - this.cx;
+    const dy = this.ty - this.cy;
+    if (Math.abs(dx) > 0.15 || Math.abs(dy) > 0.15) {
+      this.cx += dx * 0.09;
+      this.cy += dy * 0.09;
+      el.stage.style.setProperty("--cx", this.cx.toFixed(1) + "px");
+      el.stage.style.setProperty("--cy", this.cy.toFixed(1) + "px");
+      el.cursor.style.transform = `translate(${this.cx.toFixed(1)}px,${this.cy.toFixed(1)}px)`;
+      const nx = this.cx / innerWidth - 0.5;
+      const ny = this.cy / innerHeight - 0.5;
+      el.scene.style.transform = `scale(1.05) translate(${(-nx * 16).toFixed(1)}px,${(-ny * 10).toFixed(1)}px)`;
+    }
+    mx.clearRect(0, 0, innerWidth, innerHeight);
+    if (this.ambient) {
+      const ac = rgb(cssVar("--accent-2"));
+      for (const m of this.motes) {
+        m.x += m.vx;
+        m.y += m.vy;
+        m.p += 0.012;
+        if (m.y < -10) {
+          m.y = innerHeight + 10;
+          m.x = Math.random() * innerWidth;
+        }
+        if (m.x > innerWidth + 10) m.x = -10;
+        const near = Math.max(0, 1 - Math.hypot(m.x - this.cx, m.y - this.cy) / 420);
+        const a = (0.1 + 0.65 * near) * (0.6 + 0.4 * Math.sin(m.p));
+        mx.fillStyle = `rgba(${ac[0]},${ac[1]},${ac[2]},${a.toFixed(3)})`;
+        mx.beginPath();
+        mx.arc(m.x, m.y, m.r, 0, 6.3);
+        mx.fill();
+      }
+    }
+    this.raf = requestAnimationFrame(this.frame);
+  };
+
+  /** A burst of golden sparks at a screen position. */
+  burst(x0: number, y0: number, n = 170) {
+    const el = this.el;
+    if (!el || this.reduce) return;
+    const c = el.sparks;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = innerWidth * dpr;
+    c.height = innerHeight * dpr;
+    const x = c.getContext("2d")!;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const c1 = rgb(cssVar("--accent-2"));
+    const c2 = [255, 246, 226];
+    const parts: Spark[] = Array.from({ length: n }, () => {
+      const a = Math.random() * 6.283;
+      const s = 2 + Math.random() * (n < 80 ? 5 : 10);
+      return { x: x0, y: y0, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2.2, life: 1, r: 1 + Math.random() * 2.6, c: Math.random() < 0.75 ? c1 : c2 };
+    });
+    const step = () => {
+      x.clearRect(0, 0, innerWidth, innerHeight);
+      let alive = 0;
+      for (const p of parts) {
+        if (p.life <= 0) continue;
+        alive++;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.965;
+        p.vy = p.vy * 0.965 + 0.14;
+        p.life -= 0.012;
+        x.fillStyle = `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${Math.max(0, p.life).toFixed(3)})`;
+        x.beginPath();
+        x.arc(p.x, p.y, p.r, 0, 6.3);
+        x.fill();
+      }
+      if (alive) requestAnimationFrame(step);
+      else x.clearRect(0, 0, innerWidth, innerHeight);
+    };
+    step();
+  }
+
+  /** Redraw the shelves after the theme changed (fades out, redraws, fades in). */
+  setTheme() {
+    const el = this.el;
+    if (!el) return;
+    el.scene.style.opacity = "0";
+    clearTimeout(this.themeTimer);
+    this.themeTimer = window.setTimeout(() => {
+      this.drawScene();
+      if (this.el) this.el.scene.style.opacity = "1";
+    }, 220);
+  }
+
+  setAmbient(on: boolean) {
+    this.ambient = on;
+    if (this.el) this.el.cursor.style.opacity = on ? "1" : "0";
+  }
+
+  flash() {
+    const f = this.el?.flash;
+    if (!f) return;
+    f.classList.remove("go");
+    void f.offsetWidth;
+    f.classList.add("go");
+  }
+}
+
+export const room = new Room();
