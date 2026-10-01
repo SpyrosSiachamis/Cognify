@@ -88,6 +88,10 @@ class InMemoryHistory:
         with self._lock:
             return [_copy(s) for s in self._students]
 
+    def get_concept(self, concept_id: UUID) -> Concept | None:
+        with self._lock:
+            return next((_copy(c) for c in self._concepts if c.id == concept_id), None)
+
     def get_or_create_concept(self, name: str) -> Concept:
         key = name.strip().lower()
         with self._lock:
@@ -104,6 +108,10 @@ class InMemoryHistory:
         with self._lock:
             self._problems.append(_copy(problem))
             return _copy(problem)
+
+    def get_problem(self, problem_id: UUID) -> Problem | None:
+        with self._lock:
+            return next((_copy(p) for p in self._problems if p.id == problem_id), None)
 
     def create_session(self, session: Session) -> Session:
         with self._lock:
@@ -170,6 +178,24 @@ class InMemoryHistory:
             self._find_session(check.session_id)
             self._checks.append(_copy(check))
             return _copy(check)
+
+    # ---- latest saved record of a session ----
+
+    def latest_diagnosis(self, session_id: UUID) -> Diagnosis | None:
+        with self._lock:
+            attempt_ids = {a.id for a in self._attempts if a.session_id == session_id}
+            found = [d for d in self._diagnoses if d.attempt_id in attempt_ids]
+            return _copy(found[-1]) if found else None
+
+    def latest_strategy_decision(self, session_id: UUID) -> StrategyDecision | None:
+        with self._lock:
+            found = [d for d in self._decisions if d.session_id == session_id]
+            return _copy(found[-1]) if found else None
+
+    def latest_follow_up(self, session_id: UUID) -> FollowUp | None:
+        with self._lock:
+            found = [f for f in self._follow_ups if f.session_id == session_id]
+            return _copy(found[-1]) if found else None
 
     # ---- concept state ----
 
@@ -267,6 +293,7 @@ class InMemoryHistory:
                 session.phase = "verdict"
                 if session_over:
                     session.ended_at = outcome.created_at
+                    session.status = "verified" if outcome.result == "VERIFIED" else "not_yet_ended"
             return _copy(new_state)
 
     def load_seed(

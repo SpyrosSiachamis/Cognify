@@ -27,6 +27,7 @@ from app.common.vocab import (
     Phase,
     Rating,
     RejectionReason,
+    SessionStatus,
     State,
     StepRole,
     StepStatus,
@@ -68,13 +69,25 @@ class Problem(Record):
     created_at: AwareDatetime = Field(default_factory=now)
 
 
+class SessionSolution(Record):
+    """The hidden worked solution. Backend only; it leaves only through an explicit exit."""
+
+    result: Text
+    steps: list[Text] = Field(min_length=1)
+
+
 class Session(Record):
     id: UUID4 = Field(default_factory=uuid4)
     student_id: UUID4
     problem_id: UUID4
     concept_id: UUID4 | None = None
     phase: Phase = "ask_first_thought"
+    status: SessionStatus = "active"
     hints_used: int = Field(default=0, ge=0)
+    teach_turns: int = Field(default=0, ge=0)  # since the session started or the last NOT YET
+    not_yet_count: int = Field(default=0, ge=0)
+    force_experiment: bool = False  # the demo flag from the start request
+    hidden_solution: SessionSolution | None = None
     started_at: AwareDatetime = Field(default_factory=now)
     ended_at: AwareDatetime | None = None
 
