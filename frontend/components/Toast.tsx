@@ -18,10 +18,10 @@ export function Toast() {
   }, [toast, dispatch]);
 
   return (
-    <div className={`toast${toast ? " show" : ""}`} role="status">
+    <div className={`toast${toast ? " show" : ""}`} role="status" inert={!toast}>
       <span>{shown?.msg}</span>
       <button type="button" onClick={() => toast && dispatch({ type: "sheet", open: true, tab: toast.tab })}>
-        {shown?.label}
+        {shown?.label ?? "Open"}
       </button>
     </div>
   );

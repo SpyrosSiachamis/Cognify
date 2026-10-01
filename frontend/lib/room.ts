@@ -54,6 +54,8 @@ class Room {
   private moved = false;
   private resizeTimer = 0;
   private themeTimer = 0;
+  private last = 0; // time of the last drawn frame
+  private accent2 = [255, 255, 255]; // mote colour, read once per theme (reading CSS every frame is slow)
 
   private onMove = (e: PointerEvent) => {
     if (e.pointerType === "touch" || this.reduce || !this.el) return;
@@ -106,7 +108,16 @@ class Room {
     if (!this.el) return;
     const W = innerWidth;
     const H = innerHeight;
-    const x = sizeCanvas(this.el.scene, 1.25);
+    const scene = this.el.scene;
+    const out = sizeCanvas(scene, 1.25);
+    // Draw the shelves off screen first, then copy them over once with the blur baked in.
+    // A live CSS blur on a moving full-screen layer is what made big screens slow.
+    const buffer = document.createElement("canvas");
+    buffer.width = scene.width;
+    buffer.height = scene.height;
+    const x = buffer.getContext("2d")!;
+    const dpr = scene.width / W;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
     const r = rng(20261001);
     const spines = ["--sp1", "--sp2", "--sp3", "--sp4", "--sp5", "--sp6"].map(cssVar);
     const accent = cssVar("--accent");
@@ -178,12 +189,27 @@ class Room {
       x.fill();
     }
     x.globalCompositeOperation = "source-over";
+
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    // Not every browser supports filters on a canvas; those keep the CSS blur instead.
+    const canFilter = typeof (out as { filter?: unknown }).filter === "string";
+    if (canFilter) {
+      out.filter = `blur(${(2.6 * dpr).toFixed(2)}px) saturate(1.1)`;
+      out.drawImage(buffer, 0, 0);
+      out.filter = "none";
+      scene.style.filter = "none";
+    } else {
+      out.drawImage(buffer, 0, 0);
+      scene.style.filter = "";
+    }
+    this.accent2 = rgb(cssVar("--accent-2"));
   }
 
   // Dust motes, brighter where the light is.
   private sizeMotes() {
     if (!this.el) return;
-    this.mx = sizeCanvas(this.el.motes, 1.25);
+    // The motes canvas is redrawn every frame, so keep it at normal resolution: the dots are tiny anyway.
+    this.mx = sizeCanvas(this.el.motes, 1);
     this.motes = Array.from({ length: Math.round(innerWidth / 18) }, () => ({
       x: Math.random() * innerWidth,
       y: Math.random() * innerHeight,
@@ -198,6 +224,14 @@ class Room {
     const el = this.el;
     const mx = this.mx;
     if (!el || !mx) return;
+    // About 30 frames a second is plenty for drifting dust and a slow light, and halves the work.
+    const elapsed = t - this.last;
+    if (elapsed < 31) {
+      this.raf = requestAnimationFrame(this.frame);
+      return;
+    }
+    this.last = t;
+    const steps = Math.min(elapsed / 16.67, 4); // how many 60 fps frames this one stands for
     if (this.touch && !this.reduce) {
       // Touch screens have no cursor, so the light drifts by itself.
       this.tx = innerWidth * (0.5 + 0.38 * Math.sin(t / 5200));
@@ -206,8 +240,9 @@ class Room {
     const dx = this.tx - this.cx;
     const dy = this.ty - this.cy;
     if (Math.abs(dx) > 0.15 || Math.abs(dy) > 0.15) {
-      this.cx += dx * 0.09;
-      this.cy += dy * 0.09;
+      const ease = 1 - Math.pow(1 - 0.09, steps);
+      this.cx += dx * ease;
+      this.cy += dy * ease;
       el.stage.style.setProperty("--cx", this.cx.toFixed(1) + "px");
       el.stage.style.setProperty("--cy", this.cy.toFixed(1) + "px");
       el.cursor.style.transform = `translate(${this.cx.toFixed(1)}px,${this.cy.toFixed(1)}px)`;
@@ -217,11 +252,11 @@ class Room {
     }
     mx.clearRect(0, 0, innerWidth, innerHeight);
     if (this.ambient) {
-      const ac = rgb(cssVar("--accent-2"));
+      const ac = this.accent2;
       for (const m of this.motes) {
-        m.x += m.vx;
-        m.y += m.vy;
-        m.p += 0.012;
+        m.x += m.vx * steps;
+        m.y += m.vy * steps;
+        m.p += 0.012 * steps;
         if (m.y < -10) {
           m.y = innerHeight + 10;
           m.x = Math.random() * innerWidth;

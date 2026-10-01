@@ -19,7 +19,7 @@ export function Shelf() {
   return (
     <div className="shelf-wrap">
       <div className="shelf-head">
-        <h3>Your shelf</h3>
+        <h3 aria-level={2}>Your shelf</h3>
         <span>{state.verified ? "A new book just landed." : "One book for every concept you prove."}</span>
       </div>
       <button className="shelf" type="button" aria-label="Open your progress" onClick={() => dispatch({ type: "sheet", open: true, tab: "understanding" })}>

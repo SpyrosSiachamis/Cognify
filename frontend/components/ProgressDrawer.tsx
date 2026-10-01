@@ -27,7 +27,7 @@ const CONTENT: Record<TabId, () => ReactNode> = {
 export function ProgressDrawer({ onReset }: { onReset: () => void }) {
   const { state, dispatch } = useApp();
   const open = state.sheetOpen;
-  const sheet = useRef<HTMLElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
@@ -70,7 +70,7 @@ export function ProgressDrawer({ onReset }: { onReset: () => void }) {
   return (
     <>
       <div className={`scrim${open ? " show" : ""}`} onClick={closeSheet} />
-      <aside className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={state.backend ? "backend" : "seeded"}>
+      <div className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={state.backend ? "backend" : "seeded"}>
         <div className="sheet-head">
           <div>
             <h2>
@@ -99,7 +99,7 @@ export function ProgressDrawer({ onReset }: { onReset: () => void }) {
             Reset demo
           </button>
         </div>
-      </aside>
+      </div>
     </>
   );
 }
