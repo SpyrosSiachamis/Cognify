@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -14,8 +15,27 @@ from app.user.router import router as user_router
 from app.user.service import SessionService
 
 
+log = logging.getLogger(__name__)
+
+
+def check_tutor_config() -> str:
+    """Say which tutor serves the API, and refuse to start a real tutor that cannot work."""
+    if not os.environ.get("TUTOR_MODEL_ID"):
+        log.warning("tutor: StubTutor (TUTOR_MODEL_ID is not set; offline demo path)")
+        return "stub"
+    from app.ai_gateway.gateway import config_problems
+
+    problems = config_problems("TUTOR_MODEL_ID")
+    if problems:
+        raise RuntimeError("TUTOR_MODEL_ID is set, so the real tutor is on, but: " + "; ".join(problems)
+                           + ". Fix the configuration, or unset TUTOR_MODEL_ID to run the offline stub.")
+    log.warning("tutor: AgentTutor (model %s, region %s)", os.environ["TUTOR_MODEL_ID"], os.environ["AWS_REGION"])
+    return "agent"
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    check_tutor_config()
     autoseed()  # memory store only; restarting the backend resets the demo
     yield
 

@@ -44,6 +44,10 @@ FALLBACK_REPLY: dict[Language, str] = {
     "English": "Let's slow down for a moment. Which step of your answer are you least sure about, and why?",
     "Greek": "Ας το πάρουμε λίγο πιο αργά. Ποιο βήμα της απάντησής σου σου φαίνεται πιο δύσκολο, και γιατί;",
 }
+STRESS_TEST_MESSAGE: dict[Language, str] = {
+    "English": "Now I am removing the support. New problem, same underlying idea, different surface.",
+    "Greek": "Τώρα αφαιρώ τη βοήθεια. Νέο πρόβλημα, ίδια βασική ιδέα, διαφορετική μορφή.",
+}
 ACKNOWLEDGE_REPLY: dict[Language, str] = {
     "English": "Every step holds up. Next comes a fresh problem to try on your own.",
     "Greek": "Όλα τα βήματα στέκουν. Ακολουθεί ένα νέο πρόβλημα για να το δοκιμάσεις χωρίς βοήθεια.",

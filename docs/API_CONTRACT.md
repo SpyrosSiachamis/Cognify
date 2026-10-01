@@ -35,7 +35,7 @@ Design in brief: the student talks to one tutor interface. Behind it, a **reason
 
 ### Schemas
 
-**`StudentAttempt`**: just the student's text. Same shape on every turn.
+**`StudentAttempt`**: just the student's text (1 to 2000 characters). Same shape on every turn. Whitespace-only text gets a short probe and is not saved.
 
 **`TutorTurn`**: `session_id`; `phase`; `message` (the approved reply); optional `diagnosis` (steps with role, status and a quote of the student's words; main gap, or `null` when no gap is demonstrated (every step holds) or the evidence is insufficient (then the reply is a probe); alternatives with a confidence label each; confidence label); optional `method` (name, `mode`, experiment flag, reason; `null` on a probe or when nothing needs teaching); optional `follow_up` (problem text only, never the rubric); `hints_used`; `reply_check` (approved flag and a short summary).
 
@@ -312,8 +312,8 @@ For the teammate building the AI side. These never cross to the frontend.
 One teaching turn is two model calls with code in between (`app/tutor/agent.py`):
 
 - **Reasoning step in:** problem, the student's text, the final answer. Never the method, the history or the solution route.
-- **Reasoning step out (`TutorDiagnosis`):** steps with role, status and quote; dimension ratings with evidence; `main_gap` (nullable); alternatives; confidence label; `evidence` (`sufficient` or `insufficient`).
-- **Code:** a quote not in the student's text makes that step missing; all steps missing means insufficient evidence; all steps correct means no gap. `gap_repaired` is decided by code: the step where the previous gap showed (`TeachRequest.prior`) is now correct. The mode is `teach`, `probe` (insufficient evidence, no gap being taught) or `acknowledge` (no gap, or repaired: fixed message, no teaching call).
+- **Reasoning step out (`TutorDiagnosis`):** steps with role, status and quote; dimension ratings with evidence; `main_gap` (nullable); alternatives; confidence label; `evidence` (`sufficient` or `insufficient`); optional `error` for a wrong step: `student_did`, `actually_gives`, `asked_for`, `mismatch` (what the student's result really is versus what is needed). The teaching step targets the mismatch; the reply verifier checks that the reply does.
+- **Code:** the model proposes a draft; code decides. A step whose quote cannot be found in the student's text (allowing for formatting) is not observed and is dropped, never turned into a missing step. In work with no gap and no wrong step, unnarrated missing steps are dropped too. A wrong step must state its `error`. All steps missing with nothing to go on means insufficient evidence; all steps correct means no gap. `gap_repaired` is decided by code: the step where the previous gap showed (`TeachRequest.prior`) is now correct. The mode is `teach`, `probe` (insufficient evidence, no gap being taught) or `acknowledge` (no gap, or repaired: fixed message, no teaching call).
 - **Teaching step in:** the finished diagnosis, the gap step, the `choose_strategy` result (or none for a probe), and the retry reason after a rejection. **Out:** the reply only. On rejection only this step reruns, so the diagnosis cannot change.
 - **Out of the turn (`TutorTeachingOutput`):** the diagnosis fields plus `gap_repaired` and the approved reply; or the follow-up problem with concept invariant, target gap, target step, perturbation, difficulty and hidden rubric.
 - **Consumer:** the verification LLM checks the reply first; then code builds the `TutorTurn` for the frontend.
@@ -358,11 +358,18 @@ Follow-up problem:
 }
 ```
 
+### Follow-up request (session flow → tutor)
+
+`FollowUpRequest` carries the student's own work for a personal follow-up (F14): `student_answers` (their messages before the stress test), `last_steps` (the last teaching turn's steps, where the gap showed) and `method` (the method used while teaching), besides the problem, solution, concept, gap and hints. The follow-up is also the stress test (F15): one fresh problem, no support.
+
 ### Verifier result
 
 - **In:** a tutor reply (reply check), a follow-up problem (follow-up check), or the student's follow-up attempt with the hidden rubric (student check).
-- **Out:** mode (`reply_check`, `follow_up_check`, `student_check`); approved or rejected; rejection reason (`answer_leak`, `heavy_hint`, `method_drift`, `shaming_tone` for replies; `invalid_followup`, `answer_leak` for follow-ups; `not_independent` for the student check); a short note; for the student check: correct, reasoning quality label, and the independence input (`own_work`).
-- **Consumer:** code. On rejection it regenerates with the reason, up to 2 times, then falls back safely (a safe generic question, or a curated follow-up for the concept); the final VERIFIED decision is code's (hint count and independence come from code, not from the verifier alone).
+- **Out:** mode (`reply_check`, `follow_up_check`, `student_check`); approved or rejected; rejection reason (`answer_leak`, `heavy_hint`, `method_drift`, `off_target`, `shaming_tone` for replies; `invalid_followup`, `answer_leak` for follow-ups; `not_independent` for the student check); a short note; for the student check: correct, reasoning quality label, and the independence input (`own_work`).
+- **Reply check in:** also the diagnosed gap, the gap step with the student's words, the error mismatch, the chosen method's definition (`app/tutor/methods.py`, the same text the teaching step gets) and the language. Method adherence is judged by what the move does, not by its words.
+- **Follow-up check:** code first rejects a follow-up that is the original with new numbers (word overlap) or in the wrong language; then the verifier checks principle, target step, solvability and that it gives no hint or answer.
+- **Student check:** code also sets `own_work` to false when the answer shows no reasoning (a bare result), whatever the verifier said.
+- **Consumer:** code. A rejected reply is regenerated with the reason up to 2 times, then the safe fallback question is sent. A rejected follow-up is regenerated up to 2 times; if none passes, or the student check fails, the call raises and the session returns a retryable error (there is no fake follow-up and no fake judgement). The final VERIFIED decision is code's (hint count and independence come from code, not from the verifier alone).
 
 Rejected reply:
 

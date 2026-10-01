@@ -10,11 +10,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.common.vocab import GapType
+from app.common.vocab import GapType, Strategy
 from app.tutor.schema import (
     ChooseStrategyResult,
     FollowUpDraft,
     PriorDiagnosis,
+    Step,
     TutorFollowUpOutput,
     TutorTeachingOutput,
 )
@@ -58,6 +59,10 @@ class FollowUpRequest(BaseModel):
     main_gap: GapType | None  # None when the student was right from the start (skip rule)
     hints_used: int
     retry_reason: str | None = None  # set when the last draft was a repeat
+    # What the follow-up is built from (F14): the student's own work in this session.
+    student_answers: list[str] = []  # their messages before the stress test, oldest first
+    last_steps: list[Step] = []  # the last teaching turn's steps (where the gap showed)
+    method: Strategy | None = None  # the method that was used while teaching, if any
 
 
 class FollowUpResult(BaseModel):

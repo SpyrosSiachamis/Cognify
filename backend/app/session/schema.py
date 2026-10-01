@@ -58,7 +58,8 @@ class StudentAttempt(StrictModel):
 
     model_config = contract({"text": "I found the time to the top, but not the height."})
 
-    text: Text
+    # Same cap as the problem text (F1). Whitespace-only text is answered with a probe by the session flow.
+    text: str = Field(min_length=1, max_length=2000)
 
 
 class ConceptChange(StrictModel):

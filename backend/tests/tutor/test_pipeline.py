@@ -4,6 +4,7 @@ Each test names the architectural invariant it protects.
 """
 
 import asyncio
+import re
 
 import pytest
 
@@ -33,8 +34,8 @@ NOTHING = diagnosis(("choose_method", "missing", None), gap="concept", confidenc
 
 def run(store, model, verifier=None, request=None, **kwargs):
     tutor = AgentTutor(store, model.model, (verifier or FakeVerifier()).model, **kwargs)
-    result = asyncio.run(tutor.teach(request or teach_request()))
-    return tutor, result
+    result, trace = asyncio.run(tutor.teach_with_trace(request or teach_request()))
+    return trace, result
 
 
 # ---- diagnosis invariance ----
@@ -66,12 +67,12 @@ def test_regeneration_reruns_teaching_only(store):
 
 def test_teaching_is_aimed_at_the_gap_step(store):
     model = ScriptedModel([STALL])
-    tutor, _ = run(store, model)
+    trace, _ = run(store, model)
     sent = model.teaching_inputs[0]
     assert sent["mode"] == "teach"
     assert sent["gap_step"]["role"] == "choose_method"
     assert sent["strategy"]["method"] == "visual_decomposition"
-    assert tutor.last_trace.strategy.reason == "Worked 7 of 9 times for you on recognition gaps."
+    assert trace.strategy.reason == "Worked 7 of 9 times for you on recognition gaps."
 
 
 # ---- no gap ----
@@ -79,11 +80,11 @@ def test_teaching_is_aimed_at_the_gap_step(store):
 
 def test_correct_work_has_no_gap_and_no_teaching(store):
     model, verifier = ScriptedModel([CORRECT]), FakeVerifier()
-    tutor, result = run(store, model, verifier, request=teach_request("At the highest point, v = 0, so h = 20.4 m."))
+    trace, result = run(store, model, verifier, request=teach_request("At the highest point, v = 0, so h = 20.4 m."))
     assert result.output.main_gap is None
     assert result.method is None
     assert model.teaching_calls == 0 and verifier.inputs == []
-    assert result.output.reply == ACKNOWLEDGE_REPLY["English"] and tutor.last_trace.mode == "acknowledge"
+    assert result.output.reply == ACKNOWLEDGE_REPLY["English"] and trace.mode == "acknowledge"
 
 
 # ---- insufficient evidence ----
@@ -91,7 +92,7 @@ def test_correct_work_has_no_gap_and_no_teaching(store):
 
 def test_no_reasoning_is_insufficient_and_gets_a_probe(store):
     model = ScriptedModel([NOTHING], replies=["Where would you start with this problem?"])
-    tutor, result = run(store, model, request=teach_request("I don't know."))
+    trace, result = run(store, model, request=teach_request("I don't know."))
     out = result.output
     assert (out.evidence, out.confidence, out.main_gap) == ("insufficient", "low", None)
     assert result.method is None
@@ -102,7 +103,7 @@ def test_no_reasoning_is_insufficient_and_gets_a_probe(store):
 def test_no_reasoning_after_teaching_keeps_teaching_the_same_gap(store):
     prior = PriorDiagnosis(steps=[Step(role="choose_method", status="missing")], main_gap="recognition")
     model = ScriptedModel([NOTHING])
-    tutor, result = run(store, model, request=teach_request("I still don't know.", first_thought=False, prior=prior))
+    trace, result = run(store, model, request=teach_request("I still don't know.", first_thought=False, prior=prior))
     assert result.output.main_gap == "recognition" and result.output.confidence == "low"
     assert result.method.method == "visual_decomposition"
     assert model.teaching_inputs[0]["gap_step"]["role"] == "choose_method"
@@ -229,16 +230,16 @@ def test_choose_strategy_uses_observed_history(store):
 
 def test_only_an_approved_reply_reaches_the_student(store):
     model = ScriptedModel([STALL], replies=["Too much help."])
-    tutor, result = run(store, model, FakeVerifier(HEAVY))
-    assert len(tutor.last_trace.drafts) == 1 + MAX_REGENERATIONS
+    trace, result = run(store, model, FakeVerifier(HEAVY))
+    assert len(trace.drafts) == 1 + MAX_REGENERATIONS
     assert result.output.reply == FALLBACK_REPLY["English"] and not result.reply_check.approved
 
 
 def test_code_catches_a_leaked_answer_before_the_verifier(store):
     model = ScriptedModel([STALL], replies=["So h = 20.4 m!", "What do you know at the top?"])
     verifier = FakeVerifier()
-    tutor, result = run(store, model, verifier)
-    assert tutor.last_trace.drafts[0].check.reason == "answer_leak"
+    trace, result = run(store, model, verifier)
+    assert trace.drafts[0].check.reason == "answer_leak"
     assert len(verifier.inputs) == 1  # only the clean draft reached the verifier model
     assert "20.4" not in result.output.reply
 
@@ -268,10 +269,10 @@ def test_a_failing_verifier_never_lets_a_reply_through(store):
 )
 def test_invalid_diagnosis_twice_becomes_a_probe_not_a_crash(store, broken):
     model = ScriptedModel([broken])
-    tutor, result = run(store, model)
+    trace, result = run(store, model)
     assert model.reasoning_calls == 2  # one retry
-    assert tutor.last_trace.diagnosis_failure.startswith("invalid_output")
-    assert result.output.evidence == "insufficient" and tutor.last_trace.mode == "probe"
+    assert trace.diagnosis_failure.startswith("invalid_output")
+    assert result.output.evidence == "insufficient" and trace.mode == "probe"
 
 
 def test_invalid_diagnosis_once_is_retried(store):
@@ -282,8 +283,8 @@ def test_invalid_diagnosis_once_is_retried(store):
 
 def test_timeout_falls_back(store):
     model = ScriptedModel([STALL], delay=1)
-    tutor, result = run(store, model, timeout=0.05)
-    assert tutor.last_trace.diagnosis_failure.startswith("timeout")
+    trace, result = run(store, model, timeout=0.05)
+    assert trace.diagnosis_failure.startswith("timeout")
     assert result.output.reply == FALLBACK_REPLY["English"]
 
 
@@ -303,7 +304,8 @@ def test_gateway_maps_failures_to_typed_fallbacks():
 # ---- reasoning rules ----
 
 
-def test_invented_quote_becomes_missing(store):
+def test_a_quote_not_in_the_students_text_is_not_observed(store):
+    # Text from the problem is not the student's evidence: the step is dropped, not turned into a gap.
     invented = diagnosis(
         ("identify_quantities", "correct", "A ball is thrown upward at 20 m/s"),
         ("compute", "correct", "about 2.04 s"),
@@ -311,7 +313,7 @@ def test_invented_quote_becomes_missing(store):
     )
     _, result = run(store, ScriptedModel([invented]))
     steps = {s.role: (s.status, s.quote) for s in result.output.steps}
-    assert steps["identify_quantities"] == ("missing", None)
+    assert "identify_quantities" not in steps
     assert steps["compute"] == ("correct", "about 2.04 s")
 
 
@@ -338,8 +340,8 @@ def test_a_gap_step_disagreement_is_accepted_on_the_retry(store):
     contradictory = diagnosis(("choose_method", "correct", "about 2.04 s"), ("interpret", "missing", None),
                               gap="recognition")
     model = ScriptedModel([contradictory, contradictory])
-    tutor, result = run(store, model)
-    assert model.reasoning_calls == 2 and tutor.last_trace.diagnosis_failure is None
+    trace, result = run(store, model)
+    assert model.reasoning_calls == 2 and trace.diagnosis_failure is None
     assert result.output.main_gap == "recognition"  # kept, not replaced by a probe
 
 
@@ -367,8 +369,8 @@ def test_a_reply_in_the_wrong_language_is_regenerated_before_the_verifier(store)
     model = ScriptedModel([STALL], replies=["Tu as bien trouvé le temps ! Que sais-tu au sommet ?",
                                             "You found the time. What do you know at the very top?"])
     verifier = FakeVerifier()
-    tutor, result = run(store, model, verifier)
-    assert tutor.last_trace.drafts[0].failure.startswith("language")
+    trace, result = run(store, model, verifier)
+    assert trace.drafts[0].failure.startswith("language")
     assert len(verifier.inputs) == 1  # the French draft never reached the verifier
     assert model.teaching_inputs[0]["language"] == "English"
     assert "English" in model.teaching_inputs[1]["retry_note"]
@@ -397,14 +399,34 @@ def test_verifier_receives_gap_method_definition_and_language(store):
     sent = verifier.inputs[0]
     assert sent["main_gap"] == "recognition"
     assert sent["gap_step"].startswith("choose_method (missing)")
-    assert "lay the situation out in parts" in sent["method_definition"]
     assert sent["language"] == "English"
+
+
+def test_teaching_and_verifier_receive_the_same_method_definition_and_only_teaching_gets_guidance(store):
+    from app.tutor.methods import DEFINITIONS, GUIDANCE, METHOD_DEFINITIONS
+
+    model, verifier = ScriptedModel([STALL]), FakeVerifier()
+    run(store, model, verifier)
+    definition = METHOD_DEFINITIONS["visual_decomposition"]
+    assert model.teaching_inputs[0]["method_definition"] == definition == verifier.inputs[0]["method_definition"]
+    assert model.teaching_inputs[0]["method_guidance"] == GUIDANCE["visual_decomposition"]
+    assert "method_guidance" not in verifier.inputs[0]  # guidance is advice for teaching, never an acceptance test
+    assert set(DEFINITIONS) == set(GUIDANCE) == set(METHOD_DEFINITIONS)
+
+
+def test_method_definitions_describe_behaviour_not_response_shape():
+    """The verifier judges what a reply does, so the definitions it reads carry no counts, endings or wording."""
+    from app.tutor.methods import METHOD_DEFINITIONS
+
+    template = re.compile(r"\b(one|exactly|single) (question|sentence)|ends? with|in one short sentence|must say", re.I)
+    for method, text in METHOD_DEFINITIONS.items():
+        assert not template.search(text), f"{method}: {template.search(text).group(0)!r}"
 
 
 @pytest.mark.parametrize("rejection", [DRIFT, OFF_TARGET], ids=["method_drift", "off_target"])
 def test_drift_or_off_target_regenerates_teaching_with_the_reason(store, rejection):
     model = ScriptedModel([STALL], replies=["What do you think comes next?", "List what you know at launch and at the top."])
-    tutor, result = run(store, model, FakeVerifier(rejection, APPROVE))
+    trace, result = run(store, model, FakeVerifier(rejection, APPROVE))
     assert model.reasoning_calls == 1 and len(model.teaching_inputs) == 2
     assert model.teaching_inputs[1]["retry_reason"] == rejection["reason"]
     assert model.teaching_inputs[1]["retry_note"] == rejection["note"]
@@ -413,8 +435,8 @@ def test_drift_or_off_target_regenerates_teaching_with_the_reason(store, rejecti
 
 def test_persistent_drift_ends_in_the_fallback(store):
     model = ScriptedModel([STALL], replies=["What do you think comes next?"])
-    tutor, result = run(store, model, FakeVerifier(DRIFT))
-    assert [d.check.reason for d in tutor.last_trace.drafts] == ["method_drift"] * (1 + MAX_REGENERATIONS)
+    trace, result = run(store, model, FakeVerifier(DRIFT))
+    assert [d.check.reason for d in trace.drafts] == ["method_drift"] * (1 + MAX_REGENERATIONS)
     assert result.output.reply == FALLBACK_REPLY["English"] and not result.reply_check.approved
 
 
@@ -431,12 +453,158 @@ def test_missing_steps_with_real_reasoning_keep_the_gap(store):
         ("compute", "missing", None),
         gap="recognition",
     )
-    tutor, result = run(store, ScriptedModel([reasoning_on_a_missing_step]))
+    trace, result = run(store, ScriptedModel([reasoning_on_a_missing_step]))
     assert result.output.evidence == "sufficient" and result.output.main_gap == "recognition"
-    assert tutor.last_trace.mode == "teach"
+    assert trace.mode == "teach"
 
 
 def test_only_not_knowing_is_still_insufficient(store):
     only_unsure = diagnosis(("choose_method", "missing", "I still don't know"), gap="recognition", confidence="high")
-    tutor, result = run(store, ScriptedModel([only_unsure]), request=teach_request("I still don't know."))
-    assert result.output.evidence == "insufficient" and tutor.last_trace.mode == "probe"
+    trace, result = run(store, ScriptedModel([only_unsure]), request=teach_request("I still don't know."))
+    assert result.output.evidence == "insufficient" and trace.mode == "probe"
+
+
+# ---- regression: carrying the taught gap over must stay a valid diagnosis ----
+
+
+def test_carried_gap_that_the_model_listed_as_an_alternative_does_not_crash(store):
+    # The model says "not enough evidence" but still lists the gap being taught as an alternative.
+    # Carrying that gap over as main_gap used to bypass validation and crash in TutorTeachingOutput.
+    unsure = {**diagnosis(("compute", "correct", "I only have 2.04 s"), ("choose_method", "missing", None), gap=None,
+                          confidence="low", evidence="insufficient"),
+              "alternatives": [{"gap": "recognition", "confidence": "low"}, {"gap": "concept", "confidence": "low"}]}
+    prior = PriorDiagnosis(steps=[Step(role="choose_method", status="missing")], main_gap="recognition")
+    _, result = run(store, ScriptedModel([unsure]), request=teach_request("I still don't know, I only have 2.04 s.", prior=prior))
+    out = result.output
+    assert out.main_gap == "recognition"
+    assert [a.gap for a in out.alternatives] == ["concept"]  # the carried gap is not also an alternative
+
+
+
+# ---- no per-turn state on the shared tutor ----
+
+
+def test_one_tutor_serving_two_students_keeps_their_turns_apart(store):
+    """The server shares one AgentTutor; each turn's trace belongs to its own call."""
+    model = ScriptedModel([STALL, CORRECT])
+    tutor = AgentTutor(store, model.model, FakeVerifier().model)
+
+    async def both():
+        return await asyncio.gather(
+            tutor.teach_with_trace(teach_request()),
+            tutor.teach_with_trace(teach_request("At the highest point, v = 0, so h = 20.4 m.")),
+        )
+
+    (first, first_trace), (second, second_trace) = asyncio.run(both())
+    assert {first_trace.mode, second_trace.mode} == {"teach", "acknowledge"}
+    for result, trace in ((first, first_trace), (second, second_trace)):
+        assert result.output.main_gap == trace.diagnosis.main_gap  # each trace matches its own result
+    assert not hasattr(tutor, "last_trace")
+
+
+def test_trace_sink_receives_each_turn(store):
+    seen = []
+    tutor = AgentTutor(store, ScriptedModel([STALL]).model, FakeVerifier().model, on_trace=seen.append)
+    asyncio.run(tutor.teach(teach_request()))
+    assert len(seen) == 1 and seen[0].mode == "teach"
+
+
+
+# ---- input robustness ----
+
+
+@pytest.mark.parametrize("text", ["δεν ξέρω", "Δεν το ξέρω.", "δεν είμαι σίγουρη πώς", "κόλλησα"])
+def test_greek_not_knowing_is_not_evidence(text):
+    from app.tutor.evidence import NOT_KNOWING, substantive
+
+    assert NOT_KNOWING.search(text) and not substantive(text)
+
+
+def test_greek_not_knowing_on_a_wrong_step_becomes_missing(store):
+    unsure = diagnosis(("compute", "correct", "περίπου 2.04 s"), ("choose_method", "wrong", "δεν ξέρω πώς να βρω το ύψος"))
+    _, result = run(store, ScriptedModel([unsure], replies=["Τι ξέρεις στην κορυφή;"]),
+                    request=teach_request("Βρήκα περίπου 2.04 s, αλλά δεν ξέρω πώς να βρω το ύψος."))
+    step = next(s for s in result.output.steps if s.role == "choose_method")
+    assert step.status == "missing"
+
+
+def test_student_attempt_has_a_length_cap():
+    from pydantic import ValidationError
+
+    from app.session.schema import StudentAttempt
+
+    StudentAttempt(text="x" * 2000)
+    with pytest.raises(ValidationError):
+        StudentAttempt(text="x" * 2001)
+
+
+# ---- not observed vs missing (correct work must not get an invented gap) ----
+
+CORRECT_ATTEMPT = "At the highest point, v = 0. 0 = 20 - 9.8t, so t = 2.04 s. Then h = 20(2.04) - 4.9(2.04)^2 = 20.4 m."
+ERROR = {"student_did": "x", "actually_gives": "y", "asked_for": "z", "mismatch": "y is not z"}
+
+
+@pytest.mark.parametrize(
+    ("quote", "found"),
+    [
+        ("h = 20.4 m", True),  # reformatted: the student wrote "... = 20.4 m"
+        ("0=20-9.8t", True),
+        ("4.9 × (2.04)²", True),  # typographic math and implicit multiplication
+        ("initial velocity of 20 m/s", False),  # problem wording, not the student's
+        ("h = 40.8 m", False),  # a number the student never wrote
+        ("A ball is thrown upward", False),
+    ],
+)
+def test_quote_found_is_tolerant_of_formatting_not_of_content(quote, found):
+    from app.tutor.evidence import quote_found
+
+    assert quote_found(quote, CORRECT_ATTEMPT) is found
+
+
+def test_a_reformatted_quote_on_correct_work_stays_correct(store):
+    model = ScriptedModel([diagnosis(("identify_quantities", "correct", "At the highest point, v = 0"),
+                                     ("compute", "correct", "h = 20.4 m"), gap=None)])
+    trace, result = run(store, model, request=teach_request(CORRECT_ATTEMPT))
+    assert [(s.role, s.status) for s in result.output.steps] == [("identify_quantities", "correct"), ("compute", "correct")]
+    assert result.output.main_gap is None and trace.mode == "acknowledge"
+
+
+def test_unnarrated_steps_in_correct_work_are_not_missing(store):
+    concise = diagnosis(("compute", "correct", "h = 20.4 m"), ("interpret", "missing", None),
+                        ("identify_quantities", "missing", None), gap=None)
+    trace, result = run(store, ScriptedModel([concise]), request=teach_request(CORRECT_ATTEMPT))
+    assert [s.status for s in result.output.steps] == ["correct"]
+    assert result.output.main_gap is None and trace.mode == "acknowledge"
+
+
+def test_a_genuinely_incomplete_solution_keeps_its_missing_step(store):
+    incomplete = diagnosis(("compute", "correct", "t = 2.04 s"), ("choose_method", "missing", None), gap="recognition")
+    trace, result = run(store, ScriptedModel([incomplete]), request=teach_request(CORRECT_ATTEMPT))
+    assert ("choose_method", "missing") in [(s.role, s.status) for s in result.output.steps]
+    assert result.output.main_gap == "recognition" and trace.mode == "teach"
+
+
+def test_a_wrong_step_without_a_stated_error_is_retried(store):
+    unexplained = diagnosis(("compute", "correct", "t = 2.04 s"), ("set_up", "wrong", "h = 20(2.04) - 4.9(2.04)^2"),
+                            gap="representation")
+    explained = {**unexplained, "error": ERROR}
+    model = ScriptedModel([unexplained, explained])
+    trace, result = run(store, model, request=teach_request(CORRECT_ATTEMPT))
+    assert model.reasoning_calls == 2 and result.output.error is not None
+
+
+def test_an_unexplained_wrong_label_twice_becomes_a_probe_not_a_gap(store):
+    unexplained = diagnosis(("compute", "correct", "t = 2.04 s"), ("set_up", "wrong", "h = 20(2.04) - 4.9(2.04)^2"),
+                            gap="representation")
+    trace, result = run(store, ScriptedModel([unexplained]), request=teach_request(CORRECT_ATTEMPT))
+    assert trace.mode == "probe" and result.output.main_gap is None
+
+
+def test_an_implied_step_without_a_quote_is_not_observed_not_a_failure(store):
+    # Concise work: the model marks the method correct but the student never wrote it out.
+    concise = diagnosis(("choose_method", "correct", None), ("compute", "correct", "(20 - 5) / 3 = 5"), gap=None)
+    model = ScriptedModel([concise])
+    trace, result = run(store, model, request=teach_request("x = (20 - 5) / 3 = 5"))
+    assert model.reasoning_calls == 1  # accepted first time: no validation failure, no retry
+    assert [(s.role, s.status) for s in result.output.steps] == [("compute", "correct")]
+    assert trace.mode == "acknowledge" and trace.diagnosis_failure is None

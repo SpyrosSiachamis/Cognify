@@ -1,5 +1,8 @@
+import asyncio
 import hashlib
+import logging
 import re
+from collections.abc import Awaitable
 from uuid import UUID
 
 from app.common.vocab import GapType, State, Strategy
@@ -29,10 +32,13 @@ from app.session.schema import (
 from app.tutor.schema import DiagnosisView, FollowUpView, MethodView, ReplyCheckView, TutorTurn
 from app.user.schema import LearnerConcept, LearnerView, MethodTotal, StrategyRow, StrategyView
 
+log = logging.getLogger(__name__)
+
 MAX_TEACH_TURNS = 4  # move to the stress test after this many teaching turns regardless
 MAX_NOT_YET = 2  # the second NOT YET ends the session
 MAX_HINTS_FOR_VERIFIED = 2  # a correct answer after more hints than this is a lucky one (F16)
 MAX_FOLLOW_UP_TRIES = 3  # a repeated follow-up is regenerated this many times, then we give up
+TURN_TIMEOUT_SECONDS = 60.0  # one call to the agent; a slow turn becomes the safe fallback, not a hang
 
 FIRST_THOUGHT_PROMPT = "Before I help, what would you try first? Even an incomplete idea is useful."
 EMPTY_PROBE = "What is one thing you notice in the problem?"
@@ -57,9 +63,18 @@ class SessionService:
     """Owns the Master flow: phases, hint counts, caps and the VERIFIED decision.
     The agent only reasons and writes; it never moves the session along."""
 
-    def __init__(self, tutor: TutorPort, store: HistoryStore) -> None:
+    def __init__(self, tutor: TutorPort, store: HistoryStore, timeout: float = TURN_TIMEOUT_SECONDS) -> None:
         self._tutor = tutor
         self._store = store
+        self._timeout = timeout
+        self._locks: dict[UUID, asyncio.Lock] = {}  # one turn at a time per session (a double click)
+
+    async def _ask[T](self, call: Awaitable[T]) -> T:
+        """Every call to the agent has a time limit; the caller turns any failure into a fallback."""
+        return await asyncio.wait_for(call, self._timeout)
+
+    def _lock(self, session_id: UUID) -> asyncio.Lock:
+        return self._locks.setdefault(session_id, asyncio.Lock())
 
     # ---- start and exit ----
 
@@ -67,8 +82,9 @@ class SessionService:
         if self._store.get_student(req.student_id) is None:
             raise ApiError(404, "unknown_student", "No learner with that id.")
         try:
-            setup = await self._tutor.set_up(req.problem, req.subject)
+            setup = await self._ask(self._tutor.set_up(req.problem, req.subject))
         except Exception as exc:  # a bad agent reply must never become a 500 (F25)
+            log.warning("tutor set_up failed", exc_info=True)
             raise _unavailable() from exc
         concept = self._store.get_or_create_concept(setup.concept_name)
         problem = self._store.add_problem(
@@ -87,30 +103,39 @@ class SessionService:
             session_id=session.id, phase=session.phase, message=FIRST_THOUGHT_PROMPT, hints_used=0
         )
 
-    def exit(self, session_id: UUID) -> ExitResponse:
-        session = self._open(session_id)
-        if session.hidden_solution is None:
-            raise _internal("Session has no solution.")
-        session.phase = "exited"
-        session.status = "exited"
-        session.ended_at = rec.now()
-        self._store.update_session(session)  # no outcome is written: exit records no evidence
-        return ExitResponse(
-            phase="exited",
-            solution=Solution(**session.hidden_solution.model_dump()),
-            evidence_recorded=False,
-        )
+    async def exit(self, session_id: UUID) -> ExitResponse:
+        async with self._lock(session_id):  # wait for a turn that is still running
+            session = self._open(session_id)
+            if session.hidden_solution is None:
+                raise _internal("Session has no solution.")
+            session.phase = "exited"
+            session.status = "exited"
+            session.ended_at = rec.now()
+            self._store.update_session(session)  # no outcome is written: exit records no evidence
+            self._locks.pop(session_id, None)
+            return ExitResponse(
+                phase="exited",
+                solution=Solution(**session.hidden_solution.model_dump()),
+                evidence_recorded=False,
+            )
 
     # ---- the turn endpoint ----
 
     async def attempt(self, session_id: UUID, text: str) -> AttemptResponse:
-        session = self._open(session_id)
-        if not text.strip():
-            # Never explain instead of asking; nothing is saved and the agent is not called
-            return self._turn(session, EMPTY_PROBE, ReplyCheckView(approved=True, summary="Asked one short question."))
-        if session.phase == "stress_test":
-            return await self._judge(session, text)
-        return await self._teach(session, text)
+        async with self._lock(session_id):  # the state is read inside the lock, after any turn ahead of us
+            session = self._open(session_id)
+            if not text.strip():
+                # Never explain instead of asking; nothing is saved and the agent is not called
+                return self._turn(
+                    session, EMPTY_PROBE, ReplyCheckView(approved=True, summary="Asked one short question.")
+                )
+            if session.phase == "stress_test":
+                response = await self._judge(session, text)
+            else:
+                response = await self._teach(session, text)
+            if isinstance(response, VerdictTurn) and response.session_over:
+                self._locks.pop(session_id, None)
+            return response
 
     async def _teach(self, session: rec.Session, text: str) -> TutorTurn:
         concept = self._concept(session)
@@ -131,8 +156,9 @@ class SessionService:
             prior=self._prior(session),
         )
         try:
-            result = await self._tutor.teach(request)
+            result = await self._ask(self._tutor.teach(request))
         except Exception:
+            log.warning("tutor teach failed; sent the safe fallback (session %s)", session.id, exc_info=True)
             return self._turn(session, SAFE_FALLBACK, ReplyCheckView(approved=False, summary="Safe fallback used."))
 
         out, method = result.output, result.method
@@ -224,18 +250,19 @@ class SessionService:
         retry_reason: str | None = None
         for _ in range(MAX_FOLLOW_UP_TRIES):
             try:
-                result = await self._tutor.follow_up(
-                    FollowUpRequest(
-                        student_id=session.student_id,
-                        problem=self._problem_text(session),
-                        concept_name=self._concept(session).name,
-                        solution=self._solution(session),
-                        main_gap=main_gap,
-                        hints_used=session.hints_used,
-                        retry_reason=retry_reason,
-                    )
+                request = FollowUpRequest(
+                    student_id=session.student_id,
+                    problem=self._problem_text(session),
+                    concept_name=self._concept(session).name,
+                    solution=self._solution(session),
+                    main_gap=main_gap,
+                    hints_used=session.hints_used,
+                    retry_reason=retry_reason,
+                    **self._follow_up_evidence(session),
                 )
+                result = await self._ask(self._tutor.follow_up(request))
             except Exception as exc:
+                log.warning("tutor follow_up failed (session %s)", session.id, exc_info=True)
                 raise _unavailable() from exc
             new_fingerprint = fingerprint(result.output.follow_up.problem)
             if new_fingerprint not in seen:
@@ -251,24 +278,24 @@ class SessionService:
             raise _internal("Session is missing its follow-up or diagnosis.")
         concept = self._concept(session)
         try:
-            check = await self._tutor.judge(
-                JudgeRequest(
-                    problem=self._problem_text(session),
-                    solution=self._solution(session),
-                    follow_up=FollowUpDraft(
-                        problem=follow_up.problem_text,
-                        concept_invariant=follow_up.concept_invariant,
-                        target_gap=follow_up.target_gap,
-                        target_step=follow_up.target_step,
-                        perturbation=follow_up.perturbation,
-                        difficulty=follow_up.difficulty,
-                        hidden_rubric=follow_up.hidden_rubric,
-                    ),
-                    student_text=text,
-                    hints_used=session.hints_used,
-                )
+            request = JudgeRequest(
+                problem=self._problem_text(session),
+                solution=self._solution(session),
+                follow_up=FollowUpDraft(
+                    problem=follow_up.problem_text,
+                    concept_invariant=follow_up.concept_invariant,
+                    target_gap=follow_up.target_gap,
+                    target_step=follow_up.target_step,
+                    perturbation=follow_up.perturbation,
+                    difficulty=follow_up.difficulty,
+                    hidden_rubric=follow_up.hidden_rubric,
+                ),
+                student_text=text,
+                hints_used=session.hints_used,
             )
+            check = await self._ask(self._tutor.judge(request))
         except Exception as exc:
+            log.warning("tutor judge failed (session %s)", session.id, exc_info=True)
             raise _unavailable() from exc
 
         self._store.add_attempt(rec.Attempt(session_id=session.id, phase="stress_test", text=text), [])
@@ -344,7 +371,7 @@ class SessionService:
                         concept_id=concept.id, name=concept.name, before=before_state, after=after_state
                     ),
                     strategy=None
-                    if before_counts is None
+                    if gap is None or method is None or before_counts is None
                     else StrategyChange(
                         gap=gap, method=method, before=before_counts, after=self._counts(session.student_id, gap, method)
                     ),
@@ -392,6 +419,16 @@ class SessionService:
         )
 
     # ---- helpers ----
+
+    def _follow_up_evidence(self, session: rec.Session) -> dict:
+        """The student's own work this session, for a personal follow-up (F14)."""
+        prior = self._prior(session)
+        decision = self._store.latest_strategy_decision(session.id)
+        return {
+            "student_answers": [a.text for a in self._store.list_attempts(session.id) if a.phase != "stress_test"],
+            "last_steps": prior.steps if prior else [],
+            "method": decision.method if decision else None,
+        }
 
     def _prior(self, session: rec.Session) -> PriorDiagnosis | None:
         """The last teaching turn's steps and gap, so the tutor's code can check repair."""

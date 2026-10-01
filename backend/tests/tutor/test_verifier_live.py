@@ -63,3 +63,97 @@ def test_a_targeted_socratic_question_is_accepted():
         "socratic",
     )
     assert result.approved, result.note
+
+
+
+# ---- strategy generalization: method x domain, judged by what the move does ----
+
+SCENARIOS = {
+    "algebra": dict(problem="Solve for x: 3x + 5 = 20.", attempt="I got 3x = 15 but I don't know what to do next.",
+                    main_gap="procedure", gap_step='compute (missing): "I don\'t know what to do next"',
+                    solution="Subtract 5: 3x = 15. Divide by 3: x = 5."),
+    "fractions": dict(problem="Work out 1/2 + 1/3.", attempt="1/2 + 1/3 = 2/5, I added the tops and the bottoms.",
+                      main_gap="concept", gap_step='compute (wrong): "1/2 + 1/3 = 2/5"',
+                      solution="Common denominator 6: 3/6 + 2/6 = 5/6."),
+    "car": dict(problem="A car starts from rest and accelerates at 2 m/s^2 for 5 s. How far does it travel?",
+                attempt="Its speed after 5 s is 10 m/s, so it goes 10 x 5 = 50 m.", main_gap="concept",
+                gap_step='set_up (wrong): "it goes 10 x 5 = 50 m"', solution="s = 1/2 a t^2 = 25 m."),
+}
+
+PERFORMS_METHOD = [  # do the method without naming it -> approved
+    ("algebra", "socratic", "You have 3x = 15. What could you do to both sides so that x is left on its own?"),
+    ("algebra", "visual_decomposition",
+     "Draw two boxes. In the left one write what you have, 3x = 15; in the right one write what you want, x = ?. "
+     "What single operation turns the left box into the right one?"),
+    ("fractions", "counterexample",
+     "If adding tops and bottoms worked, then 1/2 + 1/2 would be 2/4, which is only one half. "
+     "Can two halves really add up to just a half?"),
+    ("car", "socratic", "Your 10 m/s is the speed at the very end. Was the car going that fast for all 5 seconds?"),
+    ("fractions", "worked_example",
+     "Here is a simpler one: 1/4 + 1/4. Both are quarters, so the size of the pieces stays the same: one quarter "
+     "plus one quarter is two quarters. Your turn: what does 2/4 simplify to? Then think about what size of piece "
+     "both 1/2 and 1/3 could be written in."),
+]
+
+NAMES_BUT_DOES_NOT_PERFORM = [  # use the method's vocabulary without doing it -> rejected
+    ("algebra", "visual_decomposition", "Let's visualise it and break it down: what is x?"),
+    ("algebra", "worked_example", "Here is a worked example for you: what is x in 3x = 15?"),
+    ("fractions", "counterexample", "Here is a counterexample to think about: what is a common denominator?"),
+    ("car", "socratic", "Let me explain: the car speeds up from 0, so use its average speed of 5 m/s instead of 10 m/s."),
+]
+
+
+def scenario_check(domain: str, method: str, reply: str):
+    sc = SCENARIOS[domain]
+    checked = asyncio.run(check_reply(ReplyCheckInput(
+        problem=sc["problem"], attempt=sc["attempt"], reply=reply, method=method, hints_used=0,
+        hidden_solution=sc["solution"], main_gap=sc["main_gap"], gap_step=sc["gap_step"],
+        method_definition=METHOD_DEFINITIONS[method], language="English",
+    ), gateway.model_for()))
+    print(domain, method, checked)
+    assert checked.ok
+    return checked.value
+
+
+@pytest.mark.parametrize(("domain", "method", "reply"), PERFORMS_METHOD, ids=[f"{d}-{m}" for d, m, _ in PERFORMS_METHOD])
+def test_a_reply_that_performs_the_method_is_approved(domain, method, reply):
+    result = scenario_check(domain, method, reply)
+    assert result.approved, result.note
+
+
+@pytest.mark.parametrize(("domain", "method", "reply"), NAMES_BUT_DOES_NOT_PERFORM,
+                         ids=[f"{d}-{m}" for d, m, _ in NAMES_BUT_DOES_NOT_PERFORM])
+def test_naming_a_method_without_performing_it_is_rejected(domain, method, reply):
+    result = scenario_check(domain, method, reply)
+    assert not result.approved, "named the method but did not perform it"
+
+
+# ---- the student check judges the gap step, not just the answer (F16) ----
+
+STRESS = dict(
+    follow_up="A stone is launched straight up at 15 m/s from a balcony. How far above the balcony does it rise? "
+    "(Use g = 9.8 m/s^2)",
+    concept_invariant="Constant-acceleration motion: relate speeds and distance without needing the time.",
+    hidden_rubric=["Uses v^2 = u^2 - 2gh with v = 0 at the top", "Substitutes u = 15", "About 11.5 m"],
+    target_gap="recognition", target_step="choose_method",
+)
+
+
+def student_check(text: str):
+    from app.verification.agent import check_student
+    from app.verification.schema import StudentCheckInput
+
+    checked = asyncio.run(check_student(StudentCheckInput(**STRESS, student_text=text), gateway.model_for()))
+    print(checked)
+    assert checked.ok
+    return checked.value
+
+
+def test_a_reasoned_solution_shows_the_gap_step():
+    result = student_check("At the top v = 0, so v^2 = u^2 - 2gh gives 0 = 225 - 19.6h, h = 225 / 19.6, about 11.5 m.")
+    assert result.correct and result.own_work
+
+
+def test_a_correct_answer_by_trial_and_error_is_not_own_work():
+    result = student_check("I tried some heights: 10 m felt too low and 12 m too high, so I guess about 11.5 m.")
+    assert not result.own_work

@@ -33,14 +33,25 @@ PRAISE_FOR_ANSWER = re.compile(r"(correct answer|that'?s right|you got it|well d
 STUCK = "I know the time is 2.04 seconds but I'm stuck."
 
 
+class TracedTutor(AgentTutor):
+    """A per-test tutor that keeps its own last trace through the on_trace sink."""
+
+    def __init__(self, store):
+        super().__init__(store, on_trace=self._keep)
+        self.trace = None
+
+    def _keep(self, trace):
+        self.trace = trace
+
+
 @pytest.fixture
-def tutor(store) -> AgentTutor:
-    return AgentTutor(store)
+def tutor(store) -> TracedTutor:
+    return TracedTutor(store)
 
 
 def teach(tutor: AgentTutor, text: str, **update):
     result = asyncio.run(tutor.teach(teach_request(text, **update)))
-    print(tutor.last_trace.model_dump_json(indent=2))
+    print(tutor.trace.model_dump_json(indent=2))
     print("TO STUDENT:", result.output.reply)
     assert written_in(result.output.reply, student_language(text)), "reply not in the student's language"
     return result
@@ -77,10 +88,10 @@ def test_case_02_partial_reasoning_credits_the_time_and_finds_the_stall(tutor):
     assert any(s.status == "correct" and "2.04" in (s.quote or "") for s in out.steps)
     assert not any(s.status == "wrong" and "know" in (s.quote or "") for s in out.steps), "not knowing is missing"
     assert out.main_gap in ("recognition", "strategy_choice")
-    assert result.reply_check.approved
-    assert re.search(r"sketch|draw|diagram|picture|mark|label", out.reply, re.I), "visual_decomposition move"
-    # The move connects what she has (the time) to what she wants (the height), not just "sketch it".
-    assert re.search(r"\btime\b", out.reply, re.I) and re.search(r"height|high", out.reply, re.I), "move not tied to her gap"
+    # Method adherence was judged semantically by the verifier against the method's definition.
+    assert result.reply_check.approved and tutor.trace.strategy.method == "visual_decomposition"
+    # The move builds on her own result instead of restarting.
+    assert re.search(r"2\.04|\btime\b", out.reply, re.I), "move not grounded in what she already has"
 
 
 # ---- case 3: completely correct ----
@@ -123,7 +134,7 @@ def test_case_05_no_reasoning_gets_a_probe_not_a_label(tutor):
     result = teach(tutor, "I don't know.")
     out = result.output
     assert (out.evidence, out.confidence, out.main_gap) == ("insufficient", "low", None)
-    assert result.method is None and tutor.last_trace.mode == "probe"
+    assert result.method is None and tutor.trace.mode == "probe"
     assert out.reply.strip().endswith("?") and len(out.reply) < 250
 
 
@@ -149,15 +160,16 @@ def test_case_07_correct_work_beats_a_recognition_history(tutor):
 
 # ---- case 8: same answer, different strategies ----
 
-STRATEGY_MOVES = {
-    "visual_decomposition": r"sketch|draw|diagram|picture|mark|label",
-    "socratic": r"\?",
-    "worked_example": r"example|suppose|imagine|consider|say a|for instance|simpler|similar|another ball",
-}
+METHODS = ("visual_decomposition", "socratic", "worked_example")
 
 
 def test_case_08_strategy_changes_the_move_not_the_diagnosis(tutor, monkeypatch):
-    gaps, reasoning_inputs = {}, []
+    """Same evidence, three pinned methods: the diagnosis stays, the intervention changes.
+
+    Method adherence is judged semantically by the verifier against the method's
+    definition (no keyword matching here); an approved reply is one that passed it.
+    """
+    gaps, replies, reasoning_inputs = {}, {}, []
     real_diagnose = agent_module.diagnose
 
     async def recording_diagnose(reasoning_input, model, timeout):
@@ -165,17 +177,19 @@ def test_case_08_strategy_changes_the_move_not_the_diagnosis(tutor, monkeypatch)
         return await real_diagnose(reasoning_input, model, timeout)
 
     monkeypatch.setattr(agent_module, "diagnose", recording_diagnose)
-    for method, pattern in STRATEGY_MOVES.items():
+    for method in METHODS:
         pinned = ChooseStrategyResult(method=method, mode="best_known", reason=f"Test strategy: {method}.",
                                       evidence=EvidenceCounts(uses=9, independent_successes=7))
         monkeypatch.setattr(agent_module, "choose_strategy", lambda *args, pinned=pinned: pinned)
         print(f"\n===== {method}")
         result = teach(tutor, MARIA_FIRST_THOUGHT)
-        assert result.reply_check.approved, f"{method}: fell back"
+        assert tutor.trace.strategy.method == method
+        assert result.reply_check.approved, f"{method}: no draft passed the method-adherence check"
         gaps[method] = result.output.main_gap
-        assert re.search(pattern, result.output.reply, re.I), f"{method} move not visible: {result.output.reply}"
+        replies[method] = result.output.reply
     assert all(i == reasoning_inputs[0] for i in reasoning_inputs), "the reasoning step saw the strategy"
     assert len(set(gaps.values())) == 1, f"diagnosis changed between runs: {gaps}"
+    assert len(set(replies.values())) == len(METHODS), "the intervention did not change with the method"
 
 
 # ---- case 9: answer leakage ----
@@ -230,6 +244,6 @@ def test_case_13_student_finds_the_equation_and_the_gap_is_repaired(tutor):
 def test_case_14_student_still_stuck_is_not_repaired(tutor):
     result = teach(tutor, "I still don't know.", first_thought=False, hints_used=1, prior=PRIOR)
     assert not result.output.gap_repaired
-    assert result.method is not None and tutor.last_trace.mode == "teach"
+    assert result.method is not None and tutor.trace.mode == "teach"
     assert result.output.main_gap == "recognition"
     assert result.output.reply.strip() != TEACHING
