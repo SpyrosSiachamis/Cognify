@@ -338,3 +338,14 @@ def test_agent_failures_are_logged_not_swallowed(make_rig, caplog):
 def test_malformed_json_is_a_readable_contract_error(make_rig):
     r = make_rig().client.post("/api/session", content="{bad json", headers={"content-type": "application/json"})
     assert r.status_code == 422 and r.json()["error"]["message"].startswith("request body:")
+
+
+def test_blank_text_in_the_stress_test_shows_the_same_problem_again(make_rig):
+    rig = make_rig()
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)
+    problem = rig.attempt(sid)["follow_up"]["problem"]
+    again = rig.attempt(sid, "   ")
+    assert again["phase"] == "stress_test" and again["follow_up"]["problem"] == problem
+    assert again["hints_used"] == 1 and len(rig.store.list_attempts(UUID(sid))) == 2  # nothing was saved or counted
+    assert rig.attempt(sid, "v^2 = u^2 - 2gh")["verdict"]["result"] == "VERIFIED"  # the story carries on
