@@ -139,7 +139,7 @@ Reference path for the demo and for building F6-F17 in the right order.
 | M2 Real diagnosis | One live AI call returns a checked diagnosis built from split steps. | F3, F7, F8, F9, F25 |
 | M3 Adaptive teaching | Strategy is chosen from seeded history, can run an experiment, and the teaching move is generated live. | F10-F13, F24, F30 |
 | M4 Follow-up and verifier | Personal follow-up generated from the student's answer; independent attempt judged. | F14, F15, F16 |
-| M5 Memory | Session outcome and strategy result are saved and used next time. | F17 |
+| M5 Memory | Postgres replaces the in-memory store behind the history interface; the same tests pass on both. | F17 |
 | M6 Two-learner views | Understanding Map and How You Learn change after verification. | F18, F19, F20, F21, F23 |
 | M7 Reliability | Timeouts, fallback, offline path, public deployment tested from another device. | F25, F27, F28, F29 |
 | M8 Stop building | Rehearse, remove fragile extras, prepare judge answers. | F22 if time |
@@ -206,7 +206,9 @@ futureed/
 |-- backend/
 |   |-- app/               entry point, routes, checked data shapes
 |   |   `-- services/      ai_gateway, tutor, strategy_choice,
-|   |                      novelty, verification, history
+|   |                      novelty, verification,
+|   |                      history (schema, interface, memory)
+|   |-- seed/              seeded demo history (Maria, Nikos)
 |   |-- prompts/           one text prompt per service
 |   `-- tests/
 |-- supabase/              database setup and seeded demo history
