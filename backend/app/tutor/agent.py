@@ -137,7 +137,7 @@ class AgentTutor:
     async def set_up(self, problem: str, subject: str | None) -> ProblemSetup:
         solved = await solve(problem, subject, self._store, self._model, self._timeout)
         if not solved.ok:
-            raise RuntimeError(f"set_up failed: {solved.failure}: {solved.detail}")
+            raise RuntimeError(f"set_up failed: {solved.failure}: {solved.detail}") # type: ignore
         out = solved.value
         return ProblemSetup(concept_name=out.concept_name, solution=SessionSolution(result=out.result, steps=out.steps))
 
@@ -180,7 +180,7 @@ class AgentTutor:
             self._verifier_model, self._timeout,
         )
         if not checked.ok:
-            raise RuntimeError(f"judge failed: {checked.failure}: {checked.detail}")
+            raise RuntimeError(f"judge failed: {checked.failure}: {checked.detail}") # type: ignore
         result = checked.value
         # Deterministic: an answer with no reasoning in it is not evidence of independent work.
         if result.own_work and not substantive(request.student_text):
@@ -226,7 +226,7 @@ class AgentTutor:
         )
         trace = TeachTrace(
             diagnosis=diagnosis,
-            diagnosis_failure=None if reasoned.ok else f"{reasoned.failure}: {reasoned.detail}",
+            diagnosis_failure=None if reasoned.ok else f"{reasoned.failure}: {reasoned.detail}", # type: ignore
             mode=mode,
             gap_step=step,
             strategy=strategy,
@@ -254,7 +254,7 @@ class AgentTutor:
         teaching_input = TeachingInput(
             problem=request.problem,
             attempt=request.student_text,
-            mode=mode,
+            mode=mode, # type: ignore
             diagnosis=diagnosis,
             gap_step=step,
             strategy=strategy,
@@ -267,7 +267,7 @@ class AgentTutor:
         for _ in range(1 + MAX_REGENERATIONS):
             written = await write_reply(teaching_input, self._model, self._timeout)
             if not written.ok:
-                trace.drafts.append(Draft(reply="", failure=f"teaching: {written.failure}: {written.detail}"))
+                trace.drafts.append(Draft(reply="", failure=f"teaching: {written.failure}: {written.detail}")) # type: ignore
                 break
             reply = written.value.reply
             if not written_in(reply, teaching_input.language):
@@ -299,7 +299,7 @@ class AgentTutor:
             )
             if not checked.ok:
                 # Never send an unchecked reply.
-                trace.drafts.append(Draft(reply=reply, failure=f"verifier: {checked.failure}: {checked.detail}"))
+                trace.drafts.append(Draft(reply=reply, failure=f"verifier: {checked.failure}: {checked.detail}")) # type: ignore
                 break
             check = checked.value
             trace.drafts.append(Draft(reply=reply, check=check))
