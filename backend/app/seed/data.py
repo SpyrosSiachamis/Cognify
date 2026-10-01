@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from app.common.vocab import GapType, Strategy
-from app.services.history.schema import (
+from app.history.schema import (
     Concept,
     ConceptState,
     Outcome,

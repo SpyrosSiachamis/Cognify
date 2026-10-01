@@ -9,7 +9,7 @@ A problem-solving tutor that learns how a student thinks and keeps testing wheth
 1. **No feature without an ID in SPEC.md.** New ideas go to the Parked list with a one-line reason, not into code.
 2. **Demo reliability beats features.** The Maria story (ball thrown up at 20 m/s) must run end to end after every change. Keep the offline path (F27) working.
 3. **Never use an AI answer without checking it.** Validate every model reply with Pydantic, retry once, then fall back safely. The verification LLM checks every Master reply and follow-up; a rejected one is regenerated with the reason up to 2 times, then a safe fallback is sent. Code, not the model, decides VERIFIED. Calls have timeouts. A bad reply must never crash a screen (F25).
-4. **One AI doorway.** All model calls go through `backend/app/services/ai_gateway`. Swapping the model touches one file (F26).
+4. **One AI doorway.** All model calls go through `backend/app/ai_gateway`. Swapping the model touches one file (F26).
 5. **No provider keys or provider calls in the frontend.** The frontend only talks to our backend.
 6. **Master never reveals the full answer.** One small teaching move per turn, never more than one new idea (F6, F13).
 7. **Every diagnosis quotes student evidence.** Low confidence means ask a probe, not assign a label. No made-up percentages.
@@ -21,7 +21,7 @@ A problem-solving tutor that learns how a student thinks and keeps testing wheth
 13. **Run tests after each change.**
 14. Tone toward students is warm and never shaming. Colours: green is used only for VERIFIED (buttons are not green; use navy/gold), amber for in progress, warm red for gaps.
 15. **The teaching method comes from the `choose_strategy` tool and is recorded; every Master reply and follow-up is verified before it is sent.**
-16. **All storage goes through `services/history`.** No other module touches a list or the database directly.
+16. **All storage goes through `app/history`.** No other module touches a list or the database directly.
 
 ## Stack (as built)
 
@@ -48,9 +48,10 @@ curl localhost:8000/health       # {"status":"ok"}
 ```
 frontend/            Next.js app
 backend/app/         FastAPI entry point, routes, Pydantic models
-backend/app/services/  ai_gateway, tutor, strategy_choice,
-                       novelty, verification,
-                       history (schema, interface, memory)
+backend/app/common/  vocab (the shared glossary values)
+backend/app/user/    API request and response models (schema)
+backend/app/         ai_gateway, tutor, strategy_choice, novelty, verification,
+                     history (schema, interface, memory): one folder per module
 backend/app/seed/    seeded demo history (Maria, Nikos)
 backend/prompts/     one text prompt per service
 backend/tests/

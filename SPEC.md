@@ -205,10 +205,11 @@ futureed/
 |   `-- lib: backend client, math helpers
 |-- backend/
 |   |-- app/               entry point, routes, checked data shapes
-|   |   `-- services/      ai_gateway, tutor, strategy_choice,
-|   |                      novelty, verification,
-|   |                      history (schema, interface, memory)
-|   |-- seed/              seeded demo history (Maria, Nikos)
+|   |   `-- common/        vocab (the shared glossary values)
+|   |   `-- user/          API request and response models
+|   |   `-- ai_gateway/, tutor/, strategy_choice/, novelty/, verification/,
+|   |       history/       (schema, interface, memory), one folder per module
+|   |   `-- seed/          seeded demo history (Maria, Nikos)
 |   |-- prompts/           one text prompt per service
 |   `-- tests/
 |-- supabase/              database setup and seeded demo history

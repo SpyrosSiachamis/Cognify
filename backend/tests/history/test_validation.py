@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.seed.data import KINEMATICS_ID, MARIA_ID
-from app.services.history.schema import (
+from app.history.schema import (
     AlternativeGap,
     AttemptStep,
     ConceptState,

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from app.services.ai_gateway.schema import GatewayConfig, GatewayFallback, GatewayOk, GatewayResult
+from app.ai_gateway.schema import GatewayConfig, GatewayFallback, GatewayOk, GatewayResult
 
 
 def test_ok_and_fallback_results():

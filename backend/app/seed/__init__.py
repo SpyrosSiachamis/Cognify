@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 
-from app.services.history import HistoryStore, get_store
+from app.history import HistoryStore, get_store
 
 from .data import build_seed
 

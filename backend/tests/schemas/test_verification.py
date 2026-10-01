@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.services.verification.schema import VerifierResultAdapter, StudentCheckResult
+from app.verification.schema import VerifierResultAdapter, StudentCheckResult
 
 REJECTED = {"mode": "reply_check", "approved": False, "reason": "answer_leak", "note": "The reply states the final height."}
 STUDENT = {"mode": "student_check", "correct": True, "reasoning_quality": "strong", "own_work": True,

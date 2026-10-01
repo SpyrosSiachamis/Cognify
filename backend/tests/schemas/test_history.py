@@ -1,4 +1,4 @@
-"""History records (app/services/history/schema.py): the contract's values and the bad examples."""
+"""History records (app/history/schema.py): the contract's values and the bad examples."""
 
 from uuid import uuid4
 
@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.seed.data import KINEMATICS_ID, MARIA_ID
-from app.services.history.schema import (
+from app.history.schema import (
     AlternativeGap,
     AttemptStep,
     Diagnosis,

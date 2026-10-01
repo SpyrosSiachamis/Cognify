@@ -2,7 +2,7 @@
 
 import argparse
 
-from app.services.history import InMemoryHistory, get_store
+from app.history import InMemoryHistory, get_store
 
 from . import seed_store
 

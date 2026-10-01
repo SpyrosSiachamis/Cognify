@@ -5,7 +5,7 @@ import os
 import pytest
 
 from app.seed import seed_store
-from app.services.history import InMemoryHistory
+from app.history import InMemoryHistory
 
 STORES = [
     "memory",

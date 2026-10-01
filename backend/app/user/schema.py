@@ -18,7 +18,7 @@ from app.common.vocab import (
     Strategy,
     VerdictResult,
 )
-from app.services.tutor.schema import Alternative, EvidenceCounts, Step
+from app.tutor.schema import Alternative, EvidenceCounts, Step
 
 Text = Annotated[str, Field(min_length=1)]
 

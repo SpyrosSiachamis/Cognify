@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.services.tutor.schema import (
+from app.tutor.schema import (
     ChooseStrategyInput,
     ChooseStrategyResult,
     Level1Answer,

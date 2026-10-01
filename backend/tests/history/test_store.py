@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from app.seed.data import KINEMATICS_ID, MARIA_ID, NIKOS_ID
-from app.services.history.schema import (
+from app.history.schema import (
     Attempt,
     FollowUp,
     Outcome,
