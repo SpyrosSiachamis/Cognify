@@ -133,13 +133,16 @@ Optional speedup: start the next phase's work while the verifier runs only if it
 ## Backend layout
 
 ```
-backend/app/services/
-  ai_gateway       all model calls, timeouts, retries, validation
-  tutor            state machine + the agent run
-  strategy_choice  the choose_strategy tool and the policy rules
-  novelty          repeat detection for follow-up problems
-  verification     the three verifier modes
-  history          reads and writes concept states, strategy records, outcomes
+backend/app/
+  common/          vocab: the shared glossary values
+  user/            API request and response models
+  ai_gateway/      all model calls, timeouts, retries, validation
+  tutor/           state machine + the agent run
+  strategy_choice/ the choose_strategy tool and the policy rules
+  novelty/         repeat detection for follow-up problems
+  verification/    the three verifier modes
+  history/         reads and writes concept states, strategy records, outcomes
+  seed/            seeded demo history (Maria, Nikos)
 backend/prompts/   tutor.txt, verifier_reply.txt, verifier_followup.txt,
                    verifier_student.txt, level1.txt
 ```
