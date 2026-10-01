@@ -9,6 +9,7 @@ import os
 from functools import lru_cache
 from typing import Any
 
+from botocore.exceptions import BotoCoreError
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelAPIError, UnexpectedModelBehavior
 from pydantic_ai.models import Model
@@ -16,6 +17,21 @@ from pydantic_ai.models import Model
 from .schema import GatewayConfig, GatewayFallback, GatewayOk
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
+
+
+def config_problems(model_id_variable: str = "TUTOR_MODEL_ID") -> list[str]:
+    """What is missing for the real model to work. Checked at startup; makes no network call."""
+    import boto3
+
+    problems = []
+    if not os.environ.get(model_id_variable):
+        problems.append(f"{model_id_variable} is not set")
+    region = os.environ.get("AWS_REGION")
+    if not region:
+        problems.append("AWS_REGION is not set")
+    if boto3.Session(region_name=region).get_credentials() is None:
+        problems.append("no AWS credentials found (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)")
+    return problems
 
 
 def config(model_id_variable: str = "TUTOR_MODEL_ID") -> GatewayConfig:
@@ -52,6 +68,8 @@ async def call[T](
         return GatewayFallback(value=fallback, failure="timeout", detail=f"no reply within {timeout}s")
     except UnexpectedModelBehavior as exc:
         return GatewayFallback(value=fallback, failure="invalid_output", detail=str(exc))
-    except ModelAPIError as exc:
-        return GatewayFallback(value=fallback, failure="provider_error", detail=str(exc))
+    except (ModelAPIError, BotoCoreError) as exc:
+        # BotoCoreError: failures before or around the HTTP call that the model library does not wrap
+        # (missing credentials, connection and read timeouts, endpoint errors).
+        return GatewayFallback(value=fallback, failure="provider_error", detail=f"{type(exc).__name__}: {exc}")
     return GatewayOk(value=result.output)

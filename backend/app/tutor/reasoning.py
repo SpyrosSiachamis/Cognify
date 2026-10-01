@@ -13,13 +13,14 @@ from pydantic_ai.models import Model
 from app.ai_gateway import gateway
 from app.ai_gateway.schema import GatewayFallback, GatewayOk
 
+from .evidence import NOT_KNOWING, quote_found, substantive
 from .repair import GAP_STEPS
-from .schema import ReasoningInput, Step, TutorDiagnosis
+from .schema import ReasoningDraft, ReasoningInput, Step, TutorDiagnosis
 
 INSTRUCTIONS = (Path(__file__).parent / "reasoning_prompt.txt").read_text(encoding="utf-8")
 
 reasoning_agent = Agent(
-    output_type=TutorDiagnosis,
+    output_type=ReasoningDraft,
     deps_type=ReasoningInput,
     instructions=INSTRUCTIONS,
     retries=1,
@@ -29,38 +30,47 @@ reasoning_agent = Agent(
 )
 
 
-def _normalise(text: str) -> str:
-    text = text.lower().replace("’", "'").replace("“", '"').replace("”", '"')
-    return re.sub(r"\s+", " ", text).strip(" .,;:!?\"'")
+def apply_rules(
+    diagnosis: ReasoningDraft | TutorDiagnosis, attempt: str, check_gap_step: bool = True
+) -> TutorDiagnosis:
+    """Deterministic rules on top of the model's reading. They keep "not observed" apart from "missing".
 
-
-# Saying you do not know how to do a step is missing evidence, not a wrong step (English only for now).
-NOT_KNOWING = re.compile(r"\b(i )?(do not|don't|dont) know\b|\bnot sure\b|\bno idea\b|\bi'?m stuck\b|\bcan'?t (figure|work) out\b", re.I)
-
-
-def apply_rules(diagnosis: TutorDiagnosis, attempt: str, check_gap_step: bool = True) -> TutorDiagnosis:
-    """Deterministic rules on top of the model's reading.
-
-    - No quote, no claim (rule 7): a step whose quote is not in the attempt becomes missing.
+    - No quote, no claim (rule 7): a correct or wrong step with no quote, or with a quote that cannot be
+      found in the attempt, is not observed, so it is dropped. It is not turned into a missing step:
+      that would invent a gap (for example a method the student clearly used but did not write out).
     - A "wrong" step whose quote only says the student does not know is missing.
-    - Every step missing: there is no evidence to diagnose (insufficient, low, no gap).
-    - Every step correct: no demonstrated gap.
+    - Every step missing and nothing to go on (no gap found, or no quote beyond "I don't know"):
+      there is no evidence to diagnose (insufficient, low, no gap). A missing step that carries
+      the student's real reasoning is still evidence, so the model's gap is kept.
+    - No gap found and no step wrong: the missing steps are steps the student did not narrate, not a
+      gap, so they are dropped. A solution that really lacks a step keeps it, because the model names a gap.
+    - A wrong step needs its error stated (what the student did, what it gives, what is asked).
     """
-    text = _normalise(attempt)
-    steps = [
-        s if not s.quote or _normalise(s.quote) in text else s.model_copy(update={"status": "missing", "quote": None})
+    observed = [
+        Step(role=s.role, status=s.status, quote=s.quote)
         for s in diagnosis.steps
+        if (s.status == "missing" and not s.quote) or (s.quote and quote_found(s.quote, attempt))
     ]
     steps = [
         s.model_copy(update={"status": "missing"}) if s.status == "wrong" and NOT_KNOWING.search(s.quote or "") else s
-        for s in steps
+        for s in observed
     ]
+    no_evidence = diagnosis.main_gap is None or not any(substantive(s.quote) for s in steps)
     update: dict = {"steps": steps}
-    if all(s.status == "missing" for s in steps):
-        update |= {"evidence": "insufficient", "confidence": "low", "main_gap": None, "alternatives": []}
-    elif all(s.status == "correct" for s in steps):
-        update |= {"main_gap": None, "alternatives": []}
-    result = TutorDiagnosis.model_validate(diagnosis.model_copy(update=update).model_dump())
+    if not steps or (all(s.status == "missing" for s in steps) and no_evidence):
+        update = {"steps": steps or [Step(role="choose_method", status="missing")], "evidence": "insufficient",
+                  "confidence": "low", "main_gap": None, "alternatives": [], "error": None}
+    elif diagnosis.evidence == "sufficient":
+        if diagnosis.main_gap is None and not any(s.status == "wrong" for s in steps):
+            update |= {"steps": [s for s in steps if s.status != "missing"], "alternatives": []}
+        if all(s.status == "correct" for s in update["steps"]):
+            update |= {"main_gap": None, "alternatives": [], "error": None}
+    if diagnosis.error is None and any(s.status == "wrong" for s in update["steps"]):
+        raise ValueError(
+            "a step is marked wrong but error is empty. State the error at that step (student_did, "
+            "actually_gives, asked_for, mismatch), or mark the step correct if the student's work there holds"
+        )
+    result = TutorDiagnosis.model_validate({**diagnosis.model_dump(), **{k: v for k, v in update.items()}})
     # A gap must show where that kind of gap lives (for example a recognition gap at choose_method).
     roles = GAP_STEPS.get(result.main_gap, ()) if result.main_gap and check_gap_step else ()
     if roles and any(s.role in roles and s.status == "correct" for s in result.steps) and not any(
@@ -75,13 +85,15 @@ def apply_rules(diagnosis: TutorDiagnosis, attempt: str, check_gap_step: bool = 
 
 
 @reasoning_agent.output_validator
-def follow_the_rules(ctx: RunContext[ReasoningInput], output: TutorDiagnosis) -> TutorDiagnosis:
+def follow_the_rules(ctx: RunContext[ReasoningInput], output: ReasoningDraft) -> ReasoningDraft:
+    """A proposal the rules cannot turn into a valid diagnosis goes back to the model once."""
     try:
         # The gap-step consistency check asks once; a second disagreement is accepted rather than
         # throwing the whole diagnosis away.
-        return apply_rules(output, ctx.deps.attempt, check_gap_step=ctx.retry == 0)
+        apply_rules(output, ctx.deps.attempt, check_gap_step=ctx.retry == 0)
     except ValueError as exc:
         raise ModelRetry(f"{exc}. Return the complete output again, with every field.") from exc
+    return output
 
 
 INSUFFICIENT = TutorDiagnosis(
@@ -92,12 +104,17 @@ INSUFFICIENT = TutorDiagnosis(
 async def diagnose(
     reasoning_input: ReasoningInput, model: Model, timeout: float = gateway.DEFAULT_TIMEOUT_SECONDS
 ) -> GatewayOk[TutorDiagnosis] | GatewayFallback[TutorDiagnosis]:
-    """On failure the fallback says "insufficient evidence", so the turn asks a probe, never guesses."""
-    return await gateway.call(
+    """The model proposes, code decides. On failure the fallback says "insufficient evidence",
+    so the turn asks a probe, never guesses."""
+    proposed = await gateway.call(
         reasoning_agent,
         reasoning_input.model_dump_json(indent=2),
         model=model,
         deps=reasoning_input,
-        fallback=INSUFFICIENT,
+        fallback=None,
         timeout=timeout,
     )
+    if not proposed.ok or proposed.value is None:
+        return GatewayFallback(value=INSUFFICIENT, failure=proposed.failure, detail=proposed.detail)
+    # The validator already accepted this proposal, so the same rules turn it into the diagnosis.
+    return GatewayOk(value=apply_rules(proposed.value, reasoning_input.attempt, check_gap_step=False))

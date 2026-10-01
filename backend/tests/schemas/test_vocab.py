@@ -21,7 +21,7 @@ def test_glossary_values_match_the_contract():
     assert vocab.values(vocab.VerdictResult) == ("VERIFIED", "NOT YET")
     assert vocab.values(vocab.VerifierMode) == ("reply_check", "follow_up_check", "student_check")
     assert vocab.values(vocab.RejectionReason) == (
-        "answer_leak", "heavy_hint", "method_drift", "shaming_tone", "invalid_followup", "not_independent",
+        "answer_leak", "heavy_hint", "method_drift", "off_target", "shaming_tone", "invalid_followup", "not_independent",
     )
 
 

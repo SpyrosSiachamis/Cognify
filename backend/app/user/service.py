@@ -264,6 +264,7 @@ class SessionService:
                     main_gap=main_gap,
                     hints_used=session.hints_used,
                     retry_reason=retry_reason,
+                    **self._follow_up_evidence(session),
                 )
                 result = await self._ask(self._tutor.follow_up(request))
             except Exception as exc:
@@ -424,6 +425,16 @@ class SessionService:
         )
 
     # ---- helpers ----
+
+    def _follow_up_evidence(self, session: rec.Session) -> dict:
+        """The student's own work this session, for a personal follow-up (F14)."""
+        prior = self._prior(session)
+        decision = self._store.latest_strategy_decision(session.id)
+        return {
+            "student_answers": [a.text for a in self._store.list_attempts(session.id) if a.phase != "stress_test"],
+            "last_steps": prior.steps if prior else [],
+            "method": decision.method if decision else None,
+        }
 
     def _prior(self, session: rec.Session) -> PriorDiagnosis | None:
         """The last teaching turn's steps and gap, so the tutor's code can check repair."""

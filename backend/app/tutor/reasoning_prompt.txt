@@ -9,9 +9,18 @@ How to reason, in this order:
 
 1. Read the attempt as reasoning, not as an answer to mark. Split it into ordered steps using these roles: identify_quantities, choose_method, set_up, substitute, compute, interpret. Mark each step correct, wrong or missing. Include only steps the problem needs.
    - Judge each step on its own validity. Any valid route counts: never mark a step wrong because a different or shorter route exists.
+   - Give each step its own piece of the student's text. A correct intermediate result is its own correct step (usually compute), even when a later step that uses it is wrong; do not let one wrong step swallow the correct work before it.
+   - Judge what the student shows, not what they did not narrate. A correct solution may be concise, worded differently, use a different valid method, or skip writing down steps it clearly did: none of that is a gap. In a correct solution, leave out steps the student did not write; do not list them as missing.
+   - Mark a step missing only when the solution needs it and the student's work actually lacks it (their result is unfinished or does not follow without it).
    - A step is wrong only if the student wrote something false for it. Saying they do not know how to do a step ("I don't know how to get X") makes that step missing, not wrong.
 2. For every correct or wrong step, quote the student's own words from the attempt, copied exactly as a contiguous piece of their text. Never quote the problem or yourself. If the student did not write a step in their own words, mark it missing (quote: null), even if it seems implied by the problem. A missing step's quote is null, never an empty string or list.
-3. Look past the final answer. A correct number can sit on a wrong idea, and a wrong number can sit on a sound idea with a slip. Find the misconception precisely: name what the student believes or did that is not right, and at which step. For example, if the student computed a time and called it a height, say exactly that. Separate a conceptual error (a wrong belief about how something works) from a procedural slip (a sign, unit or arithmetic error) and from not knowing which method to use.
+3. Look past the final answer. A correct number can sit on a wrong idea, and a wrong number can sit on a sound idea with a slip. Find the misconception precisely: name what the student believes or did that is not right, and at which step. When the student's operation produces one quantity (call it A) but the question asks for another (B), say which A and which B: that is the mismatch, not just "it is wrong". Separate a conceptual error (a wrong belief about how something works) from a procedural slip (a sign, unit or arithmetic error) and from not knowing which method to use.
+   Then, if any step is wrong, fill error for the main wrong step, in plain words that fit any subject:
+   - student_did: what the student computed or claimed (for example "multiplied the length by the width", "added the two fractions' denominators").
+   - actually_gives: what that computation or claim really represents or produces (for example "the area of the rectangle", "a denominator that is not a common one").
+   - asked_for: what the problem needs at that point (for example "the perimeter (the distance around it)", "a common denominator").
+   - mismatch: one sentence on the difference between actually_gives and asked_for.
+   Be exact about the quantity or idea; do not just say it is wrong. If no step is wrong, error is null.
 4. Rate the 3 to 5 most relevant of these dimensions: correctness, recognition, representation, concept, procedure, strategy_choice, self_correction, hint_dependency, transfer. Use strong, fragile, weak or untested. Every rating states its evidence from the attempt. Do not rate a dimension the attempt gives no evidence for.
 5. Decide the evidence:
    - evidence is "insufficient" when the attempt contains no substantive reasoning (for example "I don't know", "no idea", "help", or only a restatement of the problem). Then every step is missing, main_gap is null, confidence is low, and you rate no dimension weak. Do not guess a gap from nothing.
@@ -19,7 +28,7 @@ How to reason, in this order:
 6. Decide main_gap, the one gap that best explains where the reasoning stops or goes wrong:
    - recognition: does not see which principle, relation or method applies here, so they stall or take a route that cannot reach the goal ("I don't know how to get X from Y").
    - representation: cannot translate between words, diagrams, symbols, graphs or tables (for example misreads what a quantity means, or treats one quantity as another).
-   - concept: holds a wrong belief about how the idea works (for example "zero velocity means zero acceleration", or "the speed stays the same while it slows down").
+   - concept: holds a wrong belief about how the idea works (for example "multiplying always makes a number bigger", or "heavier objects fall faster").
    - procedure: knows what to do but slips while doing it (signs, units, algebra, arithmetic).
    - strategy_choice: knows several methods but picks a poor one for this problem.
    - self_correction: produces an answer that is clearly unreasonable and does not notice or check it.

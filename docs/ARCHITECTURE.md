@@ -40,7 +40,8 @@ At the end of the loop the same verification LLM also judges the student's follo
 | Piece | Kind | Owns |
 |---|---|---|
 | Session state machine | Code | Which phase we are in, hint counts, caps, what happens next |
-| Reasoning LLM | AI | Step splitting, diagnosis with evidence; may say "no gap" or "insufficient evidence". Never sees the method |
+| Set-up LLM | AI, once per session | Concept name (reusing a name history already tracks) and the hidden worked solution |
+| Reasoning LLM | AI | Step splitting, diagnosis with evidence, and for a wrong step what the student's result really is versus what is needed; may say "no gap" or "insufficient evidence". Never sees the method |
 | Teaching LLM | AI | One reply for the given diagnosis and method (or a probe), follow-up problem |
 | Evidence rules and repair | Code | Quotes must be the student's words; all missing means probe; all correct means no gap; repair = the gap step is now correct |
 | `choose_strategy` tool | Code | Picking the teaching method from history, including experiments |
@@ -48,6 +49,8 @@ At the end of the loop the same verification LLM also judges the student's follo
 | Novelty check | Code | Rejecting a follow-up the student has already seen (normalised text hash) |
 | VERIFIED decision | Code | Combines the verifier's judgement, hint count and "was the problem fresh" |
 | History | Code + database | Concept states, strategy records, past outcomes. Only the backend reads and writes it |
+| Follow-up LLM | AI | The personal stress test (F14/F15) from the student's own answers and gap step; code rejects paraphrases of the original, the verifier checks it |
+| Shared tutor state | None | One AgentTutor serves every session; a turn's trace goes back with the call (`teach_with_trace`), never stored on the tutor |
 | Level 1 answer | AI, single call | Direct solution. No verifier, no history, no writes |
 
 ## Session phases (the state machine)

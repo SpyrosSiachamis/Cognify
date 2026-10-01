@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from app.common.vocab import Rating, RejectionReason, Strategy
+from app.common.vocab import GapType, Rating, RejectionReason, Strategy
 
 Text = Annotated[str, Field(min_length=1)]
 
@@ -39,6 +39,36 @@ class ReplyCheckInput(StrictModel):
     method: Strategy | None = None
     hints_used: int = Field(default=0, ge=0)
     hidden_solution: str | None = None
+    # What the reply is meant to target and how (filled by the tutor; all optional).
+    main_gap: GapType | None = None
+    gap_step: str | None = None  # the step role, with the student's own words if any
+    error_mismatch: str | None = None  # what the student's result really is versus what is needed
+    method_definition: str | None = None  # what the chosen method requires of a reply
+    language: str | None = None
+
+
+class FollowUpCheckInput(StrictModel):
+    """Built by code for one follow-up check; sent to the verifier as JSON."""
+
+    original_problem: Text
+    follow_up: Text
+    concept_invariant: Text
+    target_gap: GapType
+    target_step: str
+    perturbation: str
+    hidden_rubric: list[Text]
+
+
+class StudentCheckInput(StrictModel):
+    """Built by code for judging the student's answer to the stress test."""
+
+    follow_up: Text
+    concept_invariant: Text
+    hidden_rubric: list[Text]
+    student_text: Text
+    # The step that was the student's gap: own work must show it (a guessed right answer does not).
+    target_gap: GapType | None = None
+    target_step: str | None = None
 
 
 class ReplyCheckResult(_Verdict):

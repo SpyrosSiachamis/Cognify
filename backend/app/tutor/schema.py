@@ -95,6 +95,15 @@ class DimensionRating(StrictModel):
     evidence: Text
 
 
+class ErrorAnalysis(StrictModel):
+    """For a wrong step: what the student actually did versus what the problem needs (subject-agnostic)."""
+
+    student_did: Text  # what the student computed or claimed, in their terms
+    actually_gives: Text  # what that computation or claim really represents
+    asked_for: Text  # what the problem needs at this point
+    mismatch: Text  # the difference between the two, in one sentence
+
+
 class TutorDiagnosis(StrictModel):
     """Produced by the reasoning step from the student's work alone (no method, no history).
 
@@ -108,6 +117,7 @@ class TutorDiagnosis(StrictModel):
     alternatives: list[Alternative] = []
     confidence: Confidence
     evidence: Evidence = "sufficient"
+    error: ErrorAnalysis | None = None  # set when a step is wrong: the precise target for teaching
 
     @model_validator(mode="after")
     def diagnosis_is_consistent(self) -> "TutorDiagnosis":
@@ -120,6 +130,32 @@ class TutorDiagnosis(StrictModel):
         if self.main_gap is None and self.evidence == "sufficient" and any(s.status == "wrong" for s in self.steps):
             raise ValueError("a wrong step needs a main gap")
         return self
+
+
+class ObservedStep(StrictModel):
+    """A step as the reasoning model proposes it. Any quote may be missing here: code decides
+    whether there is evidence before the step becomes a Step in a TutorDiagnosis."""
+
+    role: StepRole
+    status: StepStatus
+    quote: str | None = None
+
+    @field_validator("quote", mode="before")
+    @classmethod
+    def empty_quote_is_none(cls, value: object) -> object:
+        return None if value in ("", []) else value
+
+
+class ReasoningDraft(StrictModel):
+    """The reasoning model's proposal. Code rules (tutor/reasoning.apply_rules) turn it into a TutorDiagnosis."""
+
+    steps: list[ObservedStep] = Field(min_length=1)
+    dimensions: list[DimensionRating] = []
+    main_gap: GapType | None = None
+    alternatives: list[Alternative] = []
+    confidence: Confidence
+    evidence: Evidence = "sufficient"
+    error: ErrorAnalysis | None = None
 
 
 class TutorTeachingOutput(TutorDiagnosis):
@@ -158,6 +194,8 @@ class TeachingInput(StrictModel):
     diagnosis: TutorDiagnosis
     gap_step: Step | None = None
     strategy: ChooseStrategyResult | None = None
+    method_definition: str | None = None  # the method's semantic definition; the verifier judges against the same text
+    method_guidance: str | None = None  # teaching-only advice on carrying the method out (not an acceptance test)
     hints_used: int = Field(default=0, ge=0)
     solution_steps: list[Text] = []
     language: Literal["English", "Greek"] = "English"
