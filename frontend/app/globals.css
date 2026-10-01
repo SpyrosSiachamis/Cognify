@@ -476,3 +476,5 @@ h3{font-family:var(--f-display);font-weight:560;font-size:21px;line-height:1.15;
 
 /* The prototype page has no doctype, so a textarea leaves no baseline gap under it. Keep that look. */
 .fieldwrap textarea{display:block}
+/* Same quirks-mode difference: a lone inline label above a paragraph gets no extra line height there. */
+.prob-card .kicker{display:block}

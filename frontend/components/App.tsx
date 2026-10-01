@@ -8,6 +8,8 @@ import { AppProvider, useApp } from "./AppProvider";
 import { Home } from "./Home";
 import { IconSprite } from "./Icons";
 import { QuickView } from "./QuickView";
+import { SessionView } from "./SessionView";
+import { Toast } from "./Toast";
 import { Room } from "./Room";
 import { TopBar } from "./TopBar";
 
@@ -17,6 +19,20 @@ const tutor = scriptedTutor;
 function Shell() {
   const { state, dispatch } = useApp();
   const [answer, setAnswer] = useState<Answer | null>(null);
+
+  // A soft light follows the pointer across the paper cards.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      const paper = (e.target as Element | null)?.closest?.(".paper") as HTMLElement | null;
+      if (!paper) return;
+      const r = paper.getBoundingClientRect();
+      paper.style.setProperty("--mx", e.clientX - r.left + "px");
+      paper.style.setProperty("--my", e.clientY - r.top + "px");
+    };
+    addEventListener("pointermove", onMove, { passive: true });
+    return () => removeEventListener("pointermove", onMove);
+  }, []);
 
   // Every new screen starts at the top, like the prototype.
   useEffect(() => {
@@ -48,7 +64,9 @@ function Shell() {
       <main className="wrap" id="main">
         {state.view === "home" && <Home onStart={start} />}
         {state.view === "quick" && answer && <QuickView answer={answer} onMaster={startMaster} onBack={newProblem} />}
+        {state.view === "session" && <SessionView tutor={tutor} />}
       </main>
+      <Toast />
     </>
   );
 }
