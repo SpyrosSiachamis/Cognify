@@ -59,6 +59,11 @@ Design in brief: the student talks to one tutor interface. A **tutor agent** spl
 | step status | `correct`, `wrong`, `missing` |
 | state | `strong`, `fragile`, `weak`, `untested` (concepts also allow `verified`) |
 | confidence | `low`, `medium`, `high` |
+| perturbation | `wording`, `representation`, `context`, `distractors` |
+| difficulty | `easy`, `medium`, `hard` |
+| session status | `active`, `verified`, `not_yet_ended`, `exited` |
+| attempt kind | `first_thought`, `teaching_reply`, `follow_up_attempt` |
+| gateway failure | `invalid_output`, `timeout`, `provider_error` |
 
 ### Demo mode
 

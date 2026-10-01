@@ -21,6 +21,7 @@ A problem-solving tutor that learns how a student thinks and keeps testing wheth
 13. **Run tests after each change.**
 14. Tone toward students is warm and never shaming. Colours: green is used only for VERIFIED (buttons are not green; use navy/gold), amber for in progress, warm red for gaps.
 15. **The teaching method comes from the `choose_strategy` tool and is recorded; every Master reply and follow-up is verified before it is sent.**
+16. **All storage goes through `app/history`.** No other module touches a list or the database directly.
 
 ## Stack (as built)
 
@@ -46,9 +47,13 @@ curl localhost:8000/health       # {"status":"ok"}
 
 ```
 frontend/            Next.js app
-backend/app/         FastAPI backend, organised into six modules:
-                     common, history, tutor, verification, user, ai_gateway
-backend/prompts/     text prompts
+backend/app/         FastAPI entry point, routes, Pydantic models
+backend/app/common/  vocab (the shared glossary values)
+backend/app/user/    API request and response models (schema)
+backend/app/         ai_gateway, tutor, strategy_choice, novelty, verification,
+                     history (schema, interface, memory): one folder per module
+backend/app/seed/    seeded demo history (Maria, Nikos)
+backend/prompts/     one text prompt per service
 backend/tests/
 supabase/            schema and seeded demo history
 demo/                Maria story, offline fallback, pitch notes

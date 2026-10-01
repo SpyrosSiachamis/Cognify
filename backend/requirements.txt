@@ -4,3 +4,4 @@ pydantic-settings
 pydantic-ai-slim[bedrock]
 supabase
 psycopg[binary]
+pytest
