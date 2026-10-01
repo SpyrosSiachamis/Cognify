@@ -34,16 +34,16 @@ Two students can paste the same problem. Each answer is cut into steps, so the f
 | Product name | **Cognify.** Update the mockups to match. |
 | Hero demo problem: ball thrown upward or rectangle (area 48)? | Use the ball. The screens already exist and it has a clear two-way split (section 5). It is only the demo problem; the product itself is subject-agnostic. |
 | Colour of green | Green is used **only** for VERIFIED. Main buttons use a non-green colour (navy and gold from the mockups). |
-| Levels | Build Level 1 and Level 5 only. |
+| Levels | Build Level 1 and Level 5 only. The depth selector shows just those two cards. |
 
-## 1. Features: entry and the five levels
+## 1. Features: entry and the two levels
 
 Screens from the mockups: Problem Inbox, Depth Selector and Level 1 Answer. Only Levels 1 and 5 are built.
 
 | ID | Feature | What it does | Done when | Pri | Area |
 |---|---|---|---|---|---|
 | F1 | Problem Inbox | Paste or type a problem (2000 characters), optional subject chips (Math, Physics, Biology, Chemistry, Other), "Try an example". | The example loads in one click and Continue opens the Depth Selector. | P0 | FE |
-| F2 | Depth Selector | Five cards (Answer, Explain, Teach, Coach, Master) with one line of intent each, selected card highlighted, "Edit problem". Only Answer (Level 1) and Master (Level 5) can be selected; Explain, Teach and Coach show "coming soon". | A judge understands the levels in under 15 seconds, and only Levels 1 and 5 can be selected. | P0 | FE |
+| F2 | Depth Selector | Two cards (Answer and Master) with one line of intent each, selected card highlighted, "Edit problem". No cards are shown for the unbuilt levels. | A judge understands the two levels in under 15 seconds. | P0 | FE |
 | F3 | Level 1: Answer | Final result plus short steps, formulas rendered cleanly. Shows the note that this does not count as mastery evidence. Buttons: Ask a follow-up, Try a similar question, Switch to Master. | Answer appears fast and nothing about the learner changes. | P1 | AI, FE |
 
 ## 2. Features: Master mode, the core loop
@@ -147,7 +147,7 @@ Reference path for the demo and for building F6-F17 in the right order.
 
 | Parked | Why |
 |---|---|
-| Levels 2, 3 and 4 (Explain, Teach, Coach); IDs F4 and F5 are retired | Only Levels 1 and 5 are built. The cards show "coming soon". |
+| Levels 2, 3 and 4 (Explain, Teach, Coach); IDs F4 and F5 are retired | Only Levels 1 and 5 are built. No cards are shown for them. |
 | Course PDF upload and answers grounded in course material | Large and not part of the closed loop. |
 | Finding similar past sessions by meaning (vector search) | Simple counts per method and gap are enough for the demo. |
 | Concept dependency graphs | Not part of the closed loop. |
@@ -230,7 +230,7 @@ futureed/
 
 ## Final check before the pitch
 
-- A judge can understand the levels in 15 seconds.
+- A judge can understand the two levels in 15 seconds.
 - Master never feels like an answer-dumping chatbot.
 - The diagnosis shows evidence.
 - Strategy choice visibly uses history, and an experiment is visibly labelled.

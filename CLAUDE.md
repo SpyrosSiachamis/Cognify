@@ -1,6 +1,6 @@
 # Cognify (FuturEd AI 2026)
 
-A problem-solving tutor that learns how a student thinks and keeps testing whether its best teaching method is still the best. The student pastes a problem and picks a depth. We build only **Level 1 (Answer)** and **Level 5 (Master)**; Levels 2-4 show "coming soon". The product is for general subjects, not one subject. In **Master mode** the app splits their answer into steps, finds the gap, teaches with the method that has worked for them (sometimes an experiment), gives a personal follow-up, and only says VERIFIED when they solve it without help.
+A problem-solving tutor that learns how a student thinks and keeps testing whether its best teaching method is still the best. The student pastes a problem and picks a depth. We build only **Level 1 (Answer)** and **Level 5 (Master)**; the depth selector shows just those two cards. The product is for general subjects, not one subject. In **Master mode** the app splits their answer into steps, finds the gap, teaches with the method that has worked for them (sometimes an experiment), gives a personal follow-up, and only says VERIFIED when they solve it without help.
 
 `SPEC.md` is the single source of truth for scope. Read it before building anything.
 
