@@ -6,13 +6,16 @@ The runs are independent pytest processes started together, so the total time is
     docker compose exec backend python -m scripts.eval_live --runs 5
     docker compose exec backend python -m scripts.eval_live --cases 01 06 13   # only these cases
     docker compose exec backend python -m scripts.eval_live --cases 08 --runs 5
-    docker compose exec backend python -m scripts.eval_live --log docs/MODEL_EVAL.md   # also append the table there
-    docker compose exec -e TUTOR_MODEL_ID=deepseek.v3.2 backend python -m scripts.eval_live --log docs/MODEL_EVAL.md
+    docker compose exec backend python -m scripts.eval_live --log eval_runs.md   # also append the table to a file
+    docker compose exec -e TUTOR_MODEL_ID=deepseek.v3.2 backend python -m scripts.eval_live --log eval_runs.md
+
+The --log path is inside the backend container, so eval_runs.md lands in backend/eval_runs.md on the host.
 """
 
 import argparse
 import datetime
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -56,7 +59,10 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--cases", nargs="+", default=[], metavar="CASE",
                         help="only these cases: numbers (01 06) or parts of test names (verifier)")
-    parser.add_argument("--log", metavar="PATH", help="append the result table to this markdown file (model comparison)")
+    parser.add_argument("--junit-dir", metavar="DIR",
+                        help="keep each run's junit file (per-test pass/fail and time) in this directory")
+    parser.add_argument("--log", metavar="PATH",
+                        help="append the result table to this markdown file (inside the container: backend/ is /app)")
     args = parser.parse_args()
     print(f"model: {os.environ.get('TUTOR_MODEL_ID')}" + (f" · cases: {' '.join(args.cases)}" if args.cases else ""))
 
@@ -70,6 +76,9 @@ def main() -> None:
             proc.wait()
             elapsed = time.monotonic() - started
             results = read(path, i + 1)
+            if args.junit_dir:
+                os.makedirs(args.junit_dir, exist_ok=True)
+                shutil.copy(path, os.path.join(args.junit_dir, f"run{i + 1}.xml"))
             runs.append(results)
             times.append(elapsed)
             print(f"run {i + 1}: {sum(results.values())}/{len(results)} passed, done after {elapsed:.0f}s", flush=True)
@@ -93,6 +102,7 @@ def main() -> None:
     if args.log:
         title = f"### {datetime.date.today()} · {os.environ.get('TUTOR_MODEL_ID')} · 14 cases"
         title += f" ({' '.join(args.cases)})" if args.cases else ""
+        os.makedirs(os.path.dirname(args.log) or ".", exist_ok=True)
         with open(args.log, "a", encoding="utf-8") as log:
             log.write("\n".join(["", title, "", *table, "", *(failures or ["- no failures"]), "", wall, ""]))
         print(f"appended to {args.log}")
