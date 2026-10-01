@@ -20,6 +20,7 @@ A problem-solving tutor that learns how a student thinks and keeps testing wheth
 12. **Honest wording:** "observed strategy effectiveness", "evidence-backed diagnosis". Never "learning styles" or "visual learner".
 13. **Run tests after each change.**
 14. Tone toward students is warm and never shaming. Colours: green is used only for VERIFIED (buttons are not green; use navy/gold), amber for in progress, warm red for gaps.
+15. **The teaching method comes from the `choose_strategy` tool and is recorded; every Master reply and follow-up is verified before it is sent.**
 
 ## Stack (as built)
 
@@ -46,13 +47,14 @@ curl localhost:8000/health       # {"status":"ok"}
 ```
 frontend/            Next.js app
 backend/app/         FastAPI entry point, routes, Pydantic models
-backend/app/services/  ai_gateway, reasoning, diagnosis, strategy_choice,
+backend/app/services/  ai_gateway, tutor, strategy_choice,
                        followup, novelty, verification
 backend/prompts/     one text prompt per service
 backend/tests/
 supabase/            schema and seeded demo history
 demo/                Maria story, offline fallback, pitch notes
-docs/                LEVELS, REASONING, TEACHING, FOLLOWUPS, SCREENS, PROMPTS, DATA, DEMO
+docs/                LEVELS, REASONING, TEACHING, FOLLOWUPS, SCREENS, PROMPTS, DATA, DEMO,
+                     API_CONTRACT, ARCHITECTURE
 ```
 
 Not all of these exist yet; create them as the milestones need them.
@@ -64,6 +66,7 @@ Follow the milestones in SPEC.md section 6 (M0 health, M1 hardcoded slice, M2 re
 ## Code conventions
 
 - Match the surrounding code's style and comment density.
+- The API contract is the Pydantic schemas (FastAPI OpenAPI); `docs/API_CONTRACT.md` describes behaviour and rules.
 - Backend: type-annotate everything; AI outputs are Pydantic models, never raw dicts.
 - Prompts are plain text files in `backend/prompts/`, one per service; they must cite evidence, keep the principle the same in follow-ups, and never reveal the full answer in Master.
 - Use `hashlib`/`random` from the standard library for repeat detection and experiment selection; strategy choice is rule-based, not a learning algorithm.

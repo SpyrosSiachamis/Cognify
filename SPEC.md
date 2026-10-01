@@ -83,11 +83,12 @@ The student learns the concept, and Cognify learns how to teach that student. Th
 | ID | Feature | What it does | Done when | Pri | Area |
 |---|---|---|---|---|---|
 | F24 | Seeded demo history | A believable starting history for Maria so strategy choice and the maps have something to show. Clearly labelled "seeded demo history". | Nothing synthetic is ever shown as real. | P0 | DATA |
-| F25 | Safe AI output | Every AI answer the app relies on is checked before use, with one retry and then a safe fallback. Calls have time limits; teaching text streams in. | A broken AI reply never crashes a screen. | P0 | AI |
+| F25 | Safe AI output | Every AI answer the app relies on is checked before use, with one retry and then a safe fallback. Calls have time limits. | A broken AI reply never crashes a screen. | P0 | AI |
 | F26 | One AI doorway | All AI calls go through one place in the backend so the model can be swapped. The frontend never talks to the provider. | Changing the model touches one file. | P0 | AI |
 | F27 | Offline demo path | A rehearsed, pre-saved version of the full Maria story that runs with no network or AI. | One switch plays the whole story start to finish. | P0 | PITCH |
 | F28 | Public deployment | The app runs at a public address and works from a second device. | The full demo works from a phone on mobile data. | P1 | PITCH |
 | F29 | Tests | Backend: strategy choice, exploration rules, follow-up never repeating, verification updates. Frontend: depth selection and one full-flow check. | Tests pass before every merge to main. | P1 | AI, PITCH |
+| F30 | Reply guard | Every Master reply and follow-up is checked for the answer, a heavy hint and method drift before it is sent. | A reply that states the answer never reaches the student. | P0 | AI |
 
 ## 5. The Master loop, step by step
 
@@ -195,7 +196,7 @@ futureed/
 |-- SPEC.md                this document
 |-- README.md
 |-- docs/                  LEVELS, REASONING, TEACHING, FOLLOWUPS, SCREENS,
-|                          PROMPTS, DATA, DEMO
+|                          PROMPTS, DATA, DEMO, API_CONTRACT, ARCHITECTURE
 |-- frontend/              Next.js app
 |   `-- routes: Home, Level 1, Level 5 (Master), My Learning + placeholders
 |   `-- components: DepthSelector, StepList, GapReveal, HintPanel,
@@ -204,7 +205,7 @@ futureed/
 |   `-- lib: backend client, math helpers
 |-- backend/
 |   |-- app/               entry point, routes, checked data shapes
-|   |   `-- services/      ai_gateway, reasoning, diagnosis, strategy_choice,
+|   |   `-- services/      ai_gateway, tutor, strategy_choice,
 |   |                      followup, novelty, verification
 |   |-- prompts/           one text prompt per service
 |   `-- tests/
@@ -227,6 +228,8 @@ futureed/
 | docs/PROMPTS.md | In plain words: the job of each AI prompt, what it may and may not reveal, and the rules (cite evidence, low confidence means probe instead of label, keep the principle, judge independence separately). |
 | docs/DATA.md | A plain-language list of what the app remembers and why, tied to F17, F18, F19 and F24. Database setup is owned by the Supabase work. |
 | docs/DEMO.md | The live demo script step by step, who clicks what, timings, the 90-second pitch, the judge Q&A, and how to switch to the offline path (F27). |
+| docs/API_CONTRACT.md | The API between frontend and backend (endpoints, rules, allowed values, JSON examples) and the contracts between backend pieces (`choose_strategy`, tutor agent, verifier). Pydantic schemas stay the source of truth for field types. |
+| docs/ARCHITECTURE.md | How the system works: one tutor interface, the tutor agent and verification LLM, and what code owns (flow, method choice, history, final VERIFIED decision). |
 
 ## Final check before the pitch
 
