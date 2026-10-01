@@ -1,6 +1,7 @@
 "use client";
 
-import { BASE, type Theme } from "@/lib/state";
+import { provenConcepts } from "@/lib/backend";
+import type { Theme } from "@/lib/state";
 import { useApp } from "./AppProvider";
 import { Icon } from "./Icons";
 
@@ -11,8 +12,8 @@ const THEMES: { id: Theme; label: string }[] = [
 
 export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
   const { state, dispatch, chooseTheme } = useApp();
-  const streak = BASE.streak + (state.bumped ? 1 : 0);
-  const proven = BASE.proven + (state.bumped ? 1 : 0);
+  // Concepts the backend has as verified; unknown ("–") until the learner view has loaded.
+  const proven = state.views.status === "ok" ? String(provenConcepts(state.views.data.learner).length) : "–";
 
   return (
     <header className="bar">
@@ -28,11 +29,6 @@ export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
         <b>Cognify</b>
       </button>
       <div className="bar-r">
-        <span className="pillbtn" id="streak" title="Daily streak">
-          <Icon id="i-flame" className="lamp-lit" />
-          <b>{streak}</b>
-          <span className="hide-m">day streak</span>
-        </span>
         <span className="pillbtn hide-s" id="vchip" title="Concepts you have proven">
           <Icon id="i-check" />
           <b>{proven}</b> proven

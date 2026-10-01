@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { DEMO_PROBLEM } from "@/lib/state";
-import { loadBackendData, recordedTutor } from "@/lib/backend";
-import { scriptedTutor } from "@/lib/tutor/scripted";
-import type { Answer } from "@/lib/tutor/types";
+import { useCallback, useEffect } from "react";
+import { ApiError } from "@/lib/api";
+import { loadViews } from "@/lib/backend";
+import { backendTutor } from "@/lib/tutor/backend";
 import { AppProvider, useApp } from "./AppProvider";
 import { Home } from "./Home";
 import { IconSprite } from "./Icons";
 import { ProgressDrawer } from "./ProgressDrawer";
-import { QuickView } from "./QuickView";
 import { ResultView } from "./ResultView";
 import { SealOverlay } from "./SealOverlay";
 import { SessionView } from "./SessionView";
@@ -17,30 +15,22 @@ import { Toast } from "./Toast";
 import { Room } from "./Room";
 import { TopBar } from "./TopBar";
 
-// The tutor behind the screens. Swap `scriptedTutor` for the real backend tutor when it exists.
-const baseTutor = scriptedTutor;
-
 function Shell() {
   const { state, dispatch } = useApp();
-  const [answer, setAnswer] = useState<Answer | null>(null);
 
-  // Read what the backend knows about the learner. If it cannot be reached we keep the seeded history.
-  const refreshBackend = () => {
-    loadBackendData().then((data) => dispatch({ type: "backend", data }));
-  };
-  useEffect(() => {
-    loadBackendData().then((data) => dispatch({ type: "backend", data }));
+  // What the backend knows about the learner. Loading and failure are shown as they are; nothing is filled in.
+  const refreshViews = useCallback(() => {
+    loadViews()
+      .then((data) => dispatch({ type: "views", views: { status: "ok", data } }))
+      .catch((e) => dispatch({ type: "views", views: { status: "error", message: e instanceof ApiError ? e.message : String(e) } }));
   }, [dispatch]);
+  useEffect(refreshViews, [refreshViews]);
 
-  // The Master session is also recorded on the backend; when it verifies the fresh problem we re-read the views.
-  const tutor = useMemo(
-    () =>
-      recordedTutor(baseTutor, (changes) => {
-        dispatch({ type: "verdict", changes });
-        loadBackendData().then((data) => data && dispatch({ type: "backend", data }));
-      }),
-    [dispatch],
-  );
+  // A verdict changes the learner's concept state and strategy counts on the backend: read them again.
+  const verdict = state.session.verdict;
+  useEffect(() => {
+    if (verdict) refreshViews();
+  }, [verdict, refreshViews]);
 
   // A soft light follows the pointer across the paper cards.
   useEffect(() => {
@@ -56,39 +46,20 @@ function Shell() {
     return () => removeEventListener("pointermove", onMove);
   }, []);
 
-  // Every new screen starts at the top, like the prototype.
+  // Every new screen starts at the top.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [state.view]);
 
-  const newProblem = () => {
-    if (state.sealOpen) return;
-    dispatch({ type: "newProblem" });
-  };
-  // "Reset demo": forget today's session and go back to the starting history.
-  const fullReset = () => {
-    dispatch({ type: "sheet", open: false });
-    dispatch({ type: "fullReset" });
-    refreshBackend();
-  };
-
-  // From the seal to the result screen: count today's win in the top bar.
-  const showResult = () => {
-    dispatch({ type: "seal", open: false });
-    dispatch({ type: "bump" });
-    dispatch({ type: "view", view: "result" });
-  };
-  const startMaster = () => {
-    dispatch({ type: "mode", mode: "master" });
+  const newProblem = () => dispatch({ type: "newProblem" });
+  const start = () => {
+    if (!state.problem.trim()) return;
     dispatch({ type: "startSession", now: Date.now() });
   };
-  const start = async () => {
-    // An empty box falls back to the example problem, like the prototype.
-    const problem = state.problem.trim() ? state.problem : DEMO_PROBLEM;
-    if (problem !== state.problem) dispatch({ type: "problem", problem });
-    if (state.mode === "master") return startMaster();
-    setAnswer(await tutor.answer(problem));
-    dispatch({ type: "view", view: "quick" });
+  // From the seal to the result screen.
+  const showResult = () => {
+    dispatch({ type: "seal", open: false });
+    dispatch({ type: "view", view: "result" });
   };
 
   return (
@@ -97,12 +68,11 @@ function Shell() {
       <Room />
       <TopBar onNewProblem={newProblem} />
       <main className="wrap" id="main">
-        {state.view === "home" && <Home onStart={start} />}
-        {state.view === "quick" && answer && <QuickView answer={answer} onMaster={startMaster} onBack={newProblem} />}
-        {state.view === "session" && <SessionView tutor={tutor} />}
+        {state.view === "home" && <Home onStart={start} onRetryViews={refreshViews} />}
+        {state.view === "session" && <SessionView tutor={backendTutor} onNewProblem={newProblem} />}
         {state.view === "result" && <ResultView onNewProblem={newProblem} />}
       </main>
-      <ProgressDrawer onReset={fullReset} />
+      <ProgressDrawer onRefresh={refreshViews} />
       <Toast />
       <SealOverlay onContinue={showResult} />
     </>

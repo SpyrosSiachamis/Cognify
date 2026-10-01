@@ -6,7 +6,7 @@ import { room } from "@/lib/room";
 import { useApp } from "./AppProvider";
 import { Icon } from "./Icons";
 
-/* The wax seal that stamps onto the screen when the fresh problem is solved. */
+/* The wax seal that stamps onto the screen when the backend returns a VERIFIED verdict. */
 export function SealOverlay({ onContinue }: { onContinue: () => void }) {
   const { state } = useApp();
   const go = useRef<HTMLButtonElement>(null);
@@ -28,7 +28,7 @@ export function SealOverlay({ onContinue }: { onContinue: () => void }) {
   }, [open]);
 
   return (
-    <div className={`seal-wrap${open ? " show" : ""}`} role="dialog" aria-modal="true" aria-label="Transfer verified" aria-hidden={!open} inert={!open}>
+    <div className={`seal-wrap${open ? " show" : ""}`} role="dialog" aria-modal="true" aria-label="Verified" aria-hidden={!open} inert={!open}>
       <div className="rays" />
       <div className="seal-inner">
         <svg className="seal" viewBox="0 0 300 300" aria-hidden="true">
@@ -55,8 +55,8 @@ export function SealOverlay({ onContinue }: { onContinue: () => void }) {
           </g>
         </svg>
         <div className="seal-copy">
-          <div className="big">Transfer verified</div>
-          <p>You used the idea on your own, in a new setting.</p>
+          <div className="big">Verified</div>
+          <p>{state.session.verdict?.evidence ?? "You solved the fresh problem on your own."}</p>
           <button className="btn btn-accent" type="button" ref={go} onClick={onContinue}>
             See what changed <Icon id="i-arrow" className="arr" />
           </button>

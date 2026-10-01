@@ -1,37 +1,45 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { sleep } from "@/lib/fx";
-import { htmlLength } from "@/lib/tutor/rich";
-import type { Beat, Rich, StudentInput, Turn, TutorService, Widget } from "@/lib/tutor/types";
+import { ApiError, type Solution } from "@/lib/api";
+import type { Beat, MasterSession, Rich, StudentInput, Turn, TutorService, Widget } from "@/lib/tutor/types";
+import type { Phase } from "@/lib/vocab";
 import { useApp } from "./AppProvider";
-import { BuiltCard, IdeaCard, ProbeCard, ProblemCard, QuestionCard, ReadyCard, TransferCard } from "./session/Cards";
+import { EndedCard, ErrorCard, ProblemCard, ReplyCard, SolutionCard, StressCard } from "./session/Cards";
 import { TutorMsg, YouMsg } from "./session/Messages";
 
-type Feedback = { tone: "good" | "nudge"; text: string } | undefined;
 type Item =
   | { id: number; kind: "problem"; text: string }
-  | { id: number; kind: "tutor"; paragraphs: Rich[] | null }
+  | { id: number; kind: "tutor"; paragraphs: Rich[] | null } // null: Cognify is working (typing dots)
   | { id: number; kind: "you"; text: string }
-  | { id: number; kind: "widget"; widget: Widget; done: boolean; feedback: Feedback; misses: number }
-  | { id: number; kind: "built"; equation: string; summary: Rich };
+  | { id: number; kind: "widget"; widget: Widget; done: boolean }
+  | { id: number; kind: "error"; error: ApiError }
+  | { id: number; kind: "solution"; solution: Solution };
 
 const PHASES = ["Think", "Learn", "Prove"];
+const PHASE_STEP: Record<Phase, number> = { ask_first_thought: 0, teach: 1, stress_test: 2, verdict: 2, exited: 2 };
 const STOP = Symbol("session stopped");
 
-/* The Master conversation. A small loop asks the tutor for the next turn, plays its beats
-   (messages, log lines, toasts…) and then waits for the student to answer the next question. */
-export function SessionView({ tutor }: { tutor: TutorService }) {
+const asApiError = (e: unknown) => (e instanceof ApiError ? e : new ApiError("unexpected", String(e), true));
+
+/* The Master conversation. A small loop sends the student's text to the backend, plays the mapped turn
+   (messages, log lines, the diagnosis for Progress…) and waits for the next answer. */
+export function SessionView({ tutor, onNewProblem }: { tutor: TutorService; onNewProblem: () => void }) {
   const { state, dispatch } = useApp();
   const [items, setItems] = useState<Item[]>([]);
   const [phase, setPhase] = useState(-1);
+  const [canExit, setCanExit] = useState(false);
   const waiting = useRef<((input: StudentInput) => void) | null>(null);
+  const retrying = useRef<(() => void) | null>(null);
+  const exitRef = useRef<(() => Promise<void>) | null>(null);
   const problem = useRef(state.problem);
   problem.current = state.problem;
 
   useEffect(() => {
     let stopped = false;
     let nextId = 1;
+    const controller = new AbortController();
+    let session: MasterSession | null = null;
     const alive = () => {
       if (stopped) throw STOP;
     };
@@ -41,85 +49,103 @@ export function SessionView({ tutor }: { tutor: TutorService }) {
       setItems((list) => [...list, { ...item, id } as Item]);
       return id;
     };
-    const update = (id: number, patch: Partial<Item>) => setItems((list) => list.map((it) => (it.id === id ? ({ ...it, ...patch } as Item) : it)));
+    const update = (id: number, change: Partial<Item>) => setItems((list) => list.map((it) => (it.id === id ? ({ ...it, ...change } as Item) : it)));
     const remove = (id: number) => setItems((list) => list.filter((it) => it.id !== id));
 
-    async function say(paragraphs: Rich[]) {
-      const id = add({ kind: "tutor", paragraphs: null });
-      await sleep(500 + Math.min(htmlLength(paragraphs) * 3, 700));
-      alive();
-      update(id, { paragraphs });
-    }
-
-    async function play(beats: Beat[]) {
+    function play(beats: Beat[]) {
       for (const beat of beats) {
-        alive();
-        if ("say" in beat) await say(beat.say);
+        if ("say" in beat) add({ kind: "tutor", paragraphs: beat.say });
         else if ("log" in beat) log(beat.log.b, beat.log.s, beat.log.k);
-        else if ("mark" in beat) dispatch(beat.mark === "shared" ? { type: "shared", thought: beat.thought } : { type: "probed" });
+        else if ("phase" in beat) {
+          dispatch({ type: "phase", phase: beat.phase });
+          setPhase(PHASE_STEP[beat.phase]);
+        } else if ("diagnosis" in beat) dispatch({ type: "diagnosis", diagnosis: beat.diagnosis });
+        else if ("method" in beat) dispatch({ type: "method", method: beat.method });
+        else if ("hints" in beat) dispatch({ type: "hints", hints: beat.hints });
+        else if ("verdict" in beat) dispatch({ type: "verdict", verdict: beat.verdict, over: beat.over });
         else if ("fresh" in beat) dispatch({ type: "fresh", on: true });
         else if ("toast" in beat) dispatch({ type: "toast", toast: beat.toast });
-        else if ("phase" in beat) setPhase(beat.phase);
         else if ("dim" in beat) dispatch({ type: "dim", on: beat.dim });
-        else if ("built" in beat) add({ kind: "built", equation: beat.built.equation, summary: beat.built.summary });
-        else if ("pause" in beat) await sleep(beat.pause);
-        else if ("seal" in beat) {
-          log("Transfer verified", "Fresh problem solved with 0 hints", "ok");
-          dispatch({ type: "verified" });
-          dispatch({ type: "fresh", on: true });
-          dispatch({ type: "dim", on: false });
-          dispatch({ type: "seal", open: true });
+        else if ("seal" in beat) dispatch({ type: "seal", open: true });
+      }
+    }
+
+    /** Run one backend request with the typing dots showing. On failure: an error card and a Retry button. */
+    async function withRetry<T>(request: () => Promise<T>): Promise<T> {
+      for (;;) {
+        const typing = add({ kind: "tutor", paragraphs: null });
+        try {
+          const result = await request();
+          alive();
+          remove(typing);
+          return result;
+        } catch (e) {
+          alive();
+          remove(typing);
+          const error = asApiError(e);
+          if (error.code === "cancelled") throw STOP;
+          log("Request failed", error.message);
+          const card = add({ kind: "error", error });
+          await new Promise<void>((resolve) => (retrying.current = resolve));
+          alive();
+          remove(card);
         }
       }
     }
 
     const nextInput = () => new Promise<StudentInput>((resolve) => (waiting.current = resolve));
 
+    exitRef.current = async () => {
+      if (!session) return;
+      const s = session;
+      session = null;
+      stopped = true; // the conversation loop stops; the exit is the last request
+      controller.abort();
+      waiting.current = null;
+      retrying.current = null;
+      setCanExit(false);
+      setItems((list) => list.filter((it) => it.kind !== "widget" && !(it.kind === "tutor" && it.paragraphs === null) && it.kind !== "error"));
+      try {
+        const solution = await s.exit();
+        dispatch({ type: "phase", phase: "exited" });
+        dispatch({ type: "dim", on: false });
+        log("Left the session", "Solution shown; no evidence recorded");
+        setItems((list) => [...list, { id: nextId++, kind: "solution", solution }]);
+      } catch (e) {
+        setItems((list) => [...list, { id: nextId++, kind: "error", error: asApiError(e) }]);
+      }
+    };
+
     async function main() {
-      await Promise.resolve(); // lets React's dev double-run cancel the first attempt before anything is logged
+      await Promise.resolve(); // lets React's dev double-run cancel the first attempt before anything is sent
       alive();
       log("Session started", "Master level", "ai");
       setPhase(0);
       setItems([]);
       add({ kind: "problem", text: problem.current.trim() });
-      await sleep(450);
-      alive();
-      const { session, turn: opening } = await tutor.begin(problem.current.trim());
-      alive();
-      let turn: Turn = opening;
-      await play(turn.beats);
+      const opened = await withRetry(() => tutor.begin(problem.current.trim(), controller.signal));
+      session = opened.session;
+      setCanExit(true);
+      let turn: Turn = opened.turn;
+      play(turn.beats);
 
       while (turn.next) {
         const widget = turn.next;
-        const id = add({ kind: "widget", widget, done: false, feedback: undefined, misses: 0 });
-        let accepted: Turn;
-        let misses = 0;
-        for (;;) {
-          const input = await nextInput();
-          alive();
-          // The idea and the warm-up show up as the student's own message right away.
-          if (widget.kind === "idea") {
-            remove(id);
-            add({ kind: "you", text: input.text });
-          } else if (widget.kind === "probe") {
-            update(id, { done: true });
-            add({ kind: "you", text: input.text });
-          } else if (widget.kind === "ready") {
-            remove(id);
-          }
-          const reply = await session.send(input);
-          alive();
-          if (reply.accepted) {
-            accepted = reply;
-            break;
-          }
-          misses += 1;
-          update(id, { feedback: reply.feedback, misses });
+        const id = add({ kind: "widget", widget, done: false });
+        if (widget.kind === "ended") {
+          setCanExit(false); // the backend has closed the session; exit would be refused (409 session_over)
+          return;
         }
-        if (widget.kind === "question") update(id, { done: true, feedback: accepted.feedback });
-        await play(accepted.beats);
-        turn = accepted;
+        const input = await nextInput();
+        alive();
+        update(id, { done: true });
+        add({ kind: "you", text: input.text });
+        dispatch({ type: "sent", text: input.text, first: !!input.first });
+        const current = session;
+        turn = await withRetry(() => current!.send(input, controller.signal));
+        play(turn.beats);
       }
+      setCanExit(false);
     }
 
     main().catch((e) => {
@@ -127,7 +153,10 @@ export function SessionView({ tutor }: { tutor: TutorService }) {
     });
     return () => {
       stopped = true;
+      controller.abort();
       waiting.current = null;
+      retrying.current = null;
+      exitRef.current = null;
     };
   }, [state.run, tutor, dispatch]);
 
@@ -136,17 +165,29 @@ export function SessionView({ tutor }: { tutor: TutorService }) {
     waiting.current = null;
     resolve?.(input);
   };
+  const retry = () => {
+    const resolve = retrying.current;
+    retrying.current = null;
+    resolve?.();
+  };
 
   return (
     <section className="view">
-      <div className="phase">
-        {PHASES.map((name, i) => (
-          <span key={name} className={i < phase ? "done" : i === phase ? "now" : ""}>
-            {name}
-          </span>
-        ))}
+      <div className="spread">
+        <div className="phase">
+          {PHASES.map((name, i) => (
+            <span key={name} className={i < phase ? "done" : i === phase ? "now" : ""}>
+              {name}
+            </span>
+          ))}
+        </div>
+        {canExit && (
+          <button type="button" className="btn-ghost" onClick={() => exitRef.current?.()}>
+            Exit and see the solution
+          </button>
+        )}
       </div>
-      <div className="thread" aria-live="polite">
+      <div className="thread" aria-live="polite" aria-busy={items.some((it) => it.kind === "tutor" && it.paragraphs === null)}>
         {items.map((item) => {
           switch (item.kind) {
             case "problem":
@@ -155,15 +196,15 @@ export function SessionView({ tutor }: { tutor: TutorService }) {
               return <TutorMsg key={item.id} paragraphs={item.paragraphs} />;
             case "you":
               return <YouMsg key={item.id} text={item.text} />;
-            case "built":
-              return <BuiltCard key={item.id} equation={item.equation} summary={item.summary} />;
+            case "error":
+              return <ErrorCard key={item.id} error={item.error} onRetry={item.error.retryable ? retry : undefined} />;
+            case "solution":
+              return <SolutionCard key={item.id} solution={item.solution} />;
             case "widget": {
               const w = item.widget;
-              if (w.kind === "idea") return <IdeaCard key={item.id} widget={w} onSubmit={(text) => submit({ text, kind: "idea" })} />;
-              if (w.kind === "probe") return <ProbeCard key={item.id} widget={w} done={item.done} onSubmit={(text) => submit({ text, kind: "probe" })} />;
-              if (w.kind === "question") return <QuestionCard key={item.id} widget={w} done={item.done} feedback={item.feedback} onSubmit={(text) => submit({ text, kind: "question" })} />;
-              if (w.kind === "ready") return <ReadyCard key={item.id} widget={w} onSubmit={() => submit({ text: "", kind: "ready" })} />;
-              return <TransferCard key={item.id} widget={w} misses={item.misses} onSubmit={(text, answer) => submit({ text, answer, kind: "transfer" })} />;
+              if (w.kind === "reply") return <ReplyCard key={item.id} widget={w} done={item.done} onSubmit={(text) => submit({ text, first: w.first })} />;
+              if (w.kind === "stress") return <StressCard key={item.id} widget={w} done={item.done} onSubmit={(text) => submit({ text })} />;
+              return <EndedCard key={item.id} widget={w} onNewProblem={onNewProblem} />;
             }
           }
         })}

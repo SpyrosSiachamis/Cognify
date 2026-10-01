@@ -1,120 +1,89 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { pop, prefersReducedMotion } from "@/lib/fx";
-import { HINTS, LADDER } from "@/lib/progress-data";
-import { BASE } from "@/lib/state";
+import { prefersReducedMotion } from "@/lib/fx";
+import { gapLabel, strategyLabel } from "@/lib/vocab";
 import { useApp } from "./AppProvider";
 import { Icon } from "./Icons";
-import { Spark } from "./Spark";
 
-/* After the seal: what changed for the learner (ladder) and for the teacher (7/9 becomes 8/10). */
+/* After the seal: what the backend changed for the learner (concept state) and for the teacher (strategy counts).
+   Every number and label comes from the verdict the backend returned. */
 export function ResultView({ onNewProblem }: { onNewProblem: () => void }) {
   const { state, dispatch } = useApp();
-  // The backend's own before and after, when it verified the fresh problem; otherwise the prepared 7/9 to 8/10.
-  const strategy = state.verdict?.strategy;
-  const before = strategy ? strategy.before : { independent_successes: 7, uses: 9 };
-  const after = strategy ? strategy.after : { independent_successes: 8, uses: 10 };
-  const [flipped, setFlipped] = useState<boolean[]>(LADDER.map(() => false));
-  const [odoStep, setOdoStep] = useState(0); // 0: before, 1: first number changed, 2: second changed, 3: "was ..." shown
-  const [fullSpark, setFullSpark] = useState(false);
+  const verdict = state.session.verdict;
+  const [shown, setShown] = useState(false); // the "after" values replace the "before" ones after a beat
 
   useEffect(() => {
-    const k = prefersReducedMotion() ? 0 : 1;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms * k));
-
-    // The top-bar chips already show the new numbers; give them a little pop.
-    at(300, () => pop(document.getElementById("streak")));
-    at(650, () => pop(document.getElementById("vchip")));
-    at(500, () => setFullSpark(true));
-    LADDER.forEach((l, i) => {
-      if (l[2] !== l[3]) at(800 + i * 280, () => setFlipped((f) => f.map((v, j) => (j === i ? true : v))));
-    });
-    // The odometer fades each number out and the new one in.
-    at(1200, () => setOdoStep(1));
-    at(1350, () => setOdoStep(2));
-    at(1750, () => setOdoStep(3));
-    return () => timers.forEach(clearTimeout);
+    const t = setTimeout(() => setShown(true), prefersReducedMotion() ? 0 : 900);
+    return () => clearTimeout(t);
   }, []);
 
-  const vals = fullSpark ? HINTS.vals : HINTS.vals.slice(0, 5);
-  const labels = fullSpark ? HINTS.labels : HINTS.labels.slice(0, 5);
+  if (!verdict)
+    return (
+      <section className="view">
+        <div className="paper">
+          <div className="empty">No verdict yet. Finish a Master session to see what changed.</div>
+        </div>
+      </section>
+    );
 
+  const { concept, strategy } = verdict.changes;
   return (
     <section className="view">
       <div className="vhead">
-        <span className="vbadge">
-          <Icon id="i-check" />
-          Transfer verified
-        </span>
+        {verdict.result === "VERIFIED" && (
+          <span className="vbadge">
+            <Icon id="i-check" />
+            Verified
+          </span>
+        )}
         <span className="pillbtn">
-          <b>0 hints</b> on the fresh problem
+          <b>{state.session.hintsUsed}</b> {state.session.hintsUsed === 1 ? "hint" : "hints"} before the fresh problem
         </span>
       </div>
       <h2>
         Both learners <em>just learned.</em>
       </h2>
-      <p className="lede" style={{ marginBottom: 18 }}>One verified moment updates what Cognify knows about you, and what it knows about how to teach you.</p>
-      <div className="rewards">
-        <div className="reward">
-          <Icon id="i-flame" />
-          <span><b>{BASE.streak + 1}-day streak</b> · come back tomorrow</span>
-        </div>
-        <div className="reward">
-          <Icon id="i-book" />
-          <span><b>New book on your shelf</b> · Quadratic modelling</span>
-        </div>
-        <div className="reward">
-          <Icon id="i-check" />
-          <span><b>Independence</b> · 4 hints → 0</span>
-        </div>
-      </div>
+      <p className="lede" style={{ marginBottom: 18 }}>{verdict.evidence}</p>
       <div className="twin">
         <div className="paper">
           <div className="side-title">
             <h3>What you understand</h3>
-            <span className="kicker">Quadratic modelling</span>
+            <span className="kicker">{concept.name}</span>
           </div>
           <ul className="ladder">
-            {LADDER.map((l, i) => {
-              const s = flipped[i] ? l[3] : l[2];
-              return (
-                <li key={l[0]} data-i={i} data-s={s} className={flipped[i] ? "flip" : undefined}>
-                  <span className="node" />
-                  <span className="lt">
-                    <b>{l[0]}</b>
-                    <span>{l[1]}</span>
-                  </span>
-                  <span className={`pill ${s}`}>{s}</span>
-                </li>
-              );
-            })}
+            <li data-s={shown ? concept.after : concept.before} className={shown ? "flip" : undefined}>
+              <span className="node" />
+              <span className="lt">
+                <b>{concept.name}</b>
+                <span>{shown ? `was ${concept.before}` : "before this session"}</span>
+              </span>
+              <span className={`pill ${shown ? concept.after : concept.before}`}>{shown ? concept.after : concept.before}</span>
+            </li>
           </ul>
-          <div className="twin-note">Every label is backed by a specific attempt, not an unexplained percentage.</div>
+          <div className="twin-note">{verdict.independent ? "Solved on your own: no help on the fresh problem." : "Not counted as independent."}</div>
         </div>
         <div className="paper">
           <div className="side-title">
             <h3>How Cognify teaches you</h3>
-            <span className="pill seed">Seeded history</span>
           </div>
-          <div>
-            <span className="kicker">Visual + Socratic · words → equation</span>
-            <div className="odo">
-              <span className="v">{odoStep >= 1 ? after.independent_successes : before.independent_successes}</span>
-              <small>/</small>
-              <span className="v">{odoStep >= 2 ? after.uses : before.uses}</span>
-              <small>independent</small>
-              <span className="was">{odoStep >= 3 ? `was ${before.independent_successes} / ${before.uses}` : ""}</span>
-            </div>
-          </div>
-          <div className="spark">
-            <span className="kicker">Hints needed over time</span>
+          {strategy ? (
             <div>
-              <Spark key={vals.length} vals={vals} labels={labels} animate={fullSpark} />
+              <span className="kicker">
+                {strategyLabel(strategy.method)} · {gapLabel(strategy.gap)}
+              </span>
+              <div className="odo">
+                <span className="v">{(shown ? strategy.after : strategy.before).independent_successes}</span>
+                <small>/</small>
+                <span className="v">{(shown ? strategy.after : strategy.before).uses}</span>
+                <small>independent</small>
+                <span className="was">{shown ? `was ${strategy.before.independent_successes} / ${strategy.before.uses}` : ""}</span>
+              </div>
             </div>
-          </div>
-          <div className="twin-note">Next time this gap shows up, the strategy that worked starts with stronger evidence.</div>
+          ) : (
+            <div className="empty">No teaching method was used in this session, so no strategy was credited.</div>
+          )}
+          <div className="twin-note">A strategy only gains credit when you succeed on a problem you have not seen.</div>
         </div>
       </div>
       <p className="closing">

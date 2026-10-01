@@ -12,3 +12,13 @@ export function htmlLength(paragraphs: Rich[]): number {
     return total + inner + 7;
   }, 0);
 }
+
+/** The backend's message text as paragraphs. Blank lines split paragraphs and **text** is bold;
+    the words themselves are shown exactly as the backend sent them. */
+export function fromText(text: string): Rich[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => p.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((s) => (/^\*\*[^*]+\*\*$/.test(s) ? { b: s.slice(2, -2) } : s)));
+}
