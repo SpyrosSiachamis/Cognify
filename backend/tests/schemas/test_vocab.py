@@ -32,3 +32,7 @@ def test_nine_dimensions_and_rating_scale():
 
 def test_every_rating_is_a_state():
     assert set(vocab.values(vocab.Rating)) < set(vocab.values(vocab.State))
+
+
+def test_session_status_values():
+    assert vocab.values(vocab.SessionStatus) == ("active", "verified", "not_yet_ended", "exited")

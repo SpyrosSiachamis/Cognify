@@ -73,8 +73,9 @@ RejectionReason = Literal[
     "not_independent",
 ]
 
-# How the session ended (docs/ARCHITECTURE.md: verified, not verified after the caps, or exited).
-SessionStatus = Literal["active", "verified", "not_verified", "exited"]
+# How the session ended (docs/ARCHITECTURE.md: verified, ended after the NOT YET cap, or exited).
+# Must match the sessions.status check in supabase/migrations/0001_init.sql.
+SessionStatus = Literal["active", "verified", "not_yet_ended", "exited"]
 
 # What a student message is, decided by the backend from session state (API_CONTRACT).
 AttemptKind = Literal["first_thought", "teaching_reply", "follow_up_attempt"]
