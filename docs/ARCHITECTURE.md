@@ -132,17 +132,21 @@ Optional speedup: start the next phase's work while the verifier runs only if it
 
 ## Backend layout
 
+The backend is organised into six domain-oriented modules. Related functionality stays grouped inside a module, so team members can work within relatively independent boundaries.
+
 ```
-backend/app/services/
-  ai_gateway       all model calls, timeouts, retries, validation
-  tutor            state machine + the agent run
-  strategy_choice  the choose_strategy tool and the policy rules
-  novelty          repeat detection for follow-up problems
-  verification     the three verifier modes
-  history          reads and writes concept states, strategy records, outcomes
-backend/prompts/   tutor.txt, verifier_reply.txt, verifier_followup.txt,
-                   verifier_student.txt, level1.txt
+backend/app/
+├── common/
+├── history/
+├── tutor/
+├── verification/
+├── user/
+└── ai_gateway/
 ```
+
+The six modules are `common`, `history`, `tutor`, `verification`, `user` and `ai_gateway`.
+
+Prompts live in `backend/prompts/`: `tutor.txt`, `verifier_reply.txt`, `verifier_followup.txt`, `verifier_student.txt`, `level1.txt`.
 
 ## Decisions already made
 

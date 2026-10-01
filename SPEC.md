@@ -204,10 +204,9 @@ futureed/
 |   `-- features: session (loop), learner-model, strategy-view
 |   `-- lib: backend client, math helpers
 |-- backend/
-|   |-- app/               entry point, routes, checked data shapes
-|   |   `-- services/      ai_gateway, tutor, strategy_choice,
-|   |                      novelty, verification, history
-|   |-- prompts/           one text prompt per service
+|   |-- app/               six modules: common, history, tutor,
+|   |                      verification, user, ai_gateway
+|   |-- prompts/           text prompts
 |   `-- tests/
 |-- supabase/              database setup and seeded demo history
 `-- demo/                  Maria story, offline fallback, pitch notes
