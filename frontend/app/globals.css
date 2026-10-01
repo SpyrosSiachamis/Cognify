@@ -478,3 +478,7 @@ h3{font-family:var(--f-display);font-weight:560;font-size:21px;line-height:1.15;
 .fieldwrap textarea{display:block}
 /* Same quirks-mode difference: a lone inline label above a paragraph gets no extra line height there. */
 .prob-card .kicker{display:block}
+/* Same quirks-mode difference: a small inline line under a bold block line gets no taller strut there. */
+.ladder .lt>span,.tl li>div>span{display:block}
+/* Same quirks-mode difference for every kicker label that sits alone on its line. */
+.kicker{display:block}

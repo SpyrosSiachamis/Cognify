@@ -18,3 +18,13 @@ export function popAt(el: Element | null) {
   const r = el.getBoundingClientRect();
   room.burst(r.left + Math.min(r.width, 120) / 2, r.top + r.height / 2, 34);
 }
+
+/** A pop animation on a small chip, with a few sparks. */
+export function pop(el: HTMLElement | null) {
+  if (!el) return;
+  el.classList.remove("pop");
+  void el.offsetWidth;
+  el.classList.add("pop");
+  const r = el.getBoundingClientRect();
+  room.burst(r.left + r.width / 2, r.top + r.height / 2, 36);
+}

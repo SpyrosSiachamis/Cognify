@@ -8,6 +8,8 @@ import { AppProvider, useApp } from "./AppProvider";
 import { Home } from "./Home";
 import { IconSprite } from "./Icons";
 import { QuickView } from "./QuickView";
+import { ResultView } from "./ResultView";
+import { SealOverlay } from "./SealOverlay";
 import { SessionView } from "./SessionView";
 import { Toast } from "./Toast";
 import { Room } from "./Room";
@@ -43,6 +45,12 @@ function Shell() {
     if (state.sealOpen) return;
     dispatch({ type: "newProblem" });
   };
+  // From the seal to the result screen: count today's win in the top bar.
+  const showResult = () => {
+    dispatch({ type: "seal", open: false });
+    dispatch({ type: "bump" });
+    dispatch({ type: "view", view: "result" });
+  };
   const startMaster = () => {
     dispatch({ type: "mode", mode: "master" });
     dispatch({ type: "startSession", now: Date.now() });
@@ -65,8 +73,10 @@ function Shell() {
         {state.view === "home" && <Home onStart={start} />}
         {state.view === "quick" && answer && <QuickView answer={answer} onMaster={startMaster} onBack={newProblem} />}
         {state.view === "session" && <SessionView tutor={tutor} />}
+        {state.view === "result" && <ResultView onNewProblem={newProblem} />}
       </main>
       <Toast />
+      <SealOverlay onContinue={showResult} />
     </>
   );
 }
