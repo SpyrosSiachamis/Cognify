@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from app.common.vocab import Rating, RejectionReason
+from app.common.vocab import Rating, RejectionReason, Strategy
 
 Text = Annotated[str, Field(min_length=1)]
 
@@ -28,6 +28,17 @@ class _Verdict(StrictModel):
         if not self.approved and self.reason is None:
             raise ValueError("a rejected result needs a rejection reason")
         return self
+
+
+class ReplyCheckInput(StrictModel):
+    """Built by code for one reply check; sent to the verifier as JSON."""
+
+    problem: Text
+    attempt: Text
+    reply: Text
+    method: Strategy | None = None
+    hints_used: int = Field(default=0, ge=0)
+    hidden_solution: str | None = None
 
 
 class ReplyCheckResult(_Verdict):

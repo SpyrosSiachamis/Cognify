@@ -220,7 +220,7 @@ class InMemoryHistory:
         with self._lock:
             groups: dict[tuple[str, str], list[Outcome]] = {}
             for o in self._outcomes:
-                if o.student_id == student_id and gap_type in (None, o.gap_type):
+                if o.student_id == student_id and o.method is not None and gap_type in (None, o.gap_type):
                     groups.setdefault((o.gap_type, o.method), []).append(o)
             stats = []
             for (gap, method), rows in sorted(groups.items()):

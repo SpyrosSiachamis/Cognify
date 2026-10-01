@@ -5,7 +5,7 @@ from uuid import UUID
 from app.common.vocab import GapType, State, Strategy
 from app.history import HistoryStore
 from app.history import schema as rec
-from app.tutor.schema import EvidenceCounts, FollowUpDraft
+from app.tutor.schema import EvidenceCounts, FollowUpDraft, PriorDiagnosis, Step
 from app.user.errors import ApiError
 from app.user.ports import (
     FollowUpRequest,
@@ -14,28 +14,20 @@ from app.user.ports import (
     TeachRequest,
     TutorPort,
 )
-from app.user.schema import (
+from app.session.schema import (
     AttemptResponse,
     ConceptChange,
-    DiagnosisView,
     ExitResponse,
-    FollowUpView,
-    LearnerConcept,
-    LearnerView,
-    MethodTotal,
-    MethodView,
-    ReplyCheckView,
     SessionStartRequest,
     SessionStartResponse,
     Solution,
     StrategyChange,
-    StrategyRow,
-    StrategyView,
-    TutorTurn,
     Verdict,
     VerdictChanges,
     VerdictTurn,
 )
+from app.tutor.schema import DiagnosisView, FollowUpView, MethodView, ReplyCheckView, TutorTurn
+from app.user.schema import LearnerConcept, LearnerView, MethodTotal, StrategyRow, StrategyView
 
 MAX_TEACH_TURNS = 4  # move to the stress test after this many teaching turns regardless
 MAX_NOT_YET = 2  # the second NOT YET ends the session
@@ -136,6 +128,7 @@ class SessionService:
             teach_turns=turns,
             force_experiment=session.force_experiment,
             after_not_yet=session.not_yet_count > 0 and session.teach_turns == 0,
+            prior=self._prior(session),
         )
         try:
             result = await self._tutor.teach(request)
@@ -158,24 +151,29 @@ class SessionService:
                 dimensions=[rec.DimensionRating(**d.model_dump()) for d in out.dimensions],
             )
         )
-        # The app records the tool's result; what history credits never comes from the model's wording
-        self._store.add_strategy_decision(
-            rec.StrategyDecision(
-                session_id=session.id,
-                gap_type=out.main_gap,
-                method=method.method,
-                decision_mode=method.mode,
-                reason=method.reason,
-                uses=method.evidence.uses,
-                independent_successes=method.evidence.independent_successes,
+        # The app records the tool's result; what history credits never comes from the model's wording.
+        # A probe or an acknowledgement uses no method, so nothing is recorded for it.
+        if method is not None and out.main_gap is not None:
+            self._store.add_strategy_decision(
+                rec.StrategyDecision(
+                    session_id=session.id,
+                    gap_type=out.main_gap,
+                    method=method.method,
+                    decision_mode=method.mode,
+                    reason=method.reason,
+                    uses=method.evidence.uses,
+                    independent_successes=method.evidence.independent_successes,
+                )
             )
-        )
         session.phase = "teach"
         session.hints_used = hints
         session.teach_turns = turns
         self._store.update_session(session)
 
-        if out.gap_repaired or turns >= MAX_TEACH_TURNS:
+        # Move on when the gap is repaired, when every step already holds (the skip rule;
+        # being right is still not VERIFIED), or after the turn cap.
+        no_gap = out.main_gap is None and out.evidence == "sufficient"
+        if out.gap_repaired or no_gap or turns >= MAX_TEACH_TURNS:
             return await self._stress_test(session, out.main_gap)
         return TutorTurn(
             session_id=session.id,
@@ -184,14 +182,16 @@ class SessionService:
             diagnosis=DiagnosisView(
                 steps=out.steps, main_gap=out.main_gap, alternatives=out.alternatives, confidence=out.confidence
             ),
-            method=MethodView(
+            method=None
+            if method is None
+            else MethodView(
                 name=method.method, mode=method.mode, experiment=method.mode == "experiment", reason=method.reason
             ),
             hints_used=session.hints_used,
             reply_check=result.reply_check,
         )
 
-    async def _stress_test(self, session: rec.Session, main_gap: GapType) -> TutorTurn:
+    async def _stress_test(self, session: rec.Session, main_gap: GapType | None) -> TutorTurn:
         result, new_fingerprint = await self._new_follow_up(session, main_gap)
         draft = result.output.follow_up
         self._store.add_follow_up(
@@ -218,7 +218,7 @@ class SessionService:
             reply_check=result.reply_check,
         )
 
-    async def _new_follow_up(self, session: rec.Session, main_gap: GapType) -> tuple[FollowUpResult, str]:
+    async def _new_follow_up(self, session: rec.Session, main_gap: GapType | None) -> tuple[FollowUpResult, str]:
         """Ask for a follow-up and regenerate while it repeats something this student has seen."""
         seen = {s.fingerprint for s in self._store.seen_fingerprints(session.student_id)}
         retry_reason: str | None = None
@@ -247,8 +247,8 @@ class SessionService:
         follow_up = self._store.latest_follow_up(session.id)
         diagnosis = self._store.latest_diagnosis(session.id)
         decision = self._store.latest_strategy_decision(session.id)
-        if follow_up is None or diagnosis is None or decision is None:
-            raise _internal("Session is missing its follow-up, diagnosis or method.")
+        if follow_up is None or diagnosis is None:
+            raise _internal("Session is missing its follow-up or diagnosis.")
         concept = self._concept(session)
         try:
             check = await self._tutor.judge(
@@ -288,10 +288,12 @@ class SessionService:
         # Code decides VERIFIED: the verifier's judgement, the hint count, and a fresh problem
         independent = check.own_work and session.hints_used <= MAX_HINTS_FOR_VERIFIED
         verified = check.correct and independent
-        gap, method = diagnosis.main_gap, decision.method
+        # Credit goes to the method that was recorded; a session that taught nothing credits none.
+        gap = decision.gap_type if decision else None
+        method = decision.method if decision else None
         before_state = self._concept_state(session)
         after_state = self._next_state(before_state, verified)
-        before_counts = self._counts(session.student_id, gap, method)
+        before_counts = self._counts(session.student_id, gap, method) if gap and method else None
         over = verified or session.not_yet_count + 1 >= MAX_NOT_YET
 
         self._store.record_verdict(
@@ -301,7 +303,7 @@ class SessionService:
                 concept_id=concept.id,
                 gap_type=gap,
                 method=method,
-                decision_mode=decision.decision_mode,
+                decision_mode=decision.decision_mode if decision else None,
                 result="VERIFIED" if verified else "NOT YET",
                 independent=independent,
                 hints_used=session.hints_used,
@@ -341,7 +343,9 @@ class SessionService:
                     concept=ConceptChange(
                         concept_id=concept.id, name=concept.name, before=before_state, after=after_state
                     ),
-                    strategy=StrategyChange(
+                    strategy=None
+                    if before_counts is None
+                    else StrategyChange(
                         gap=gap, method=method, before=before_counts, after=self._counts(session.student_id, gap, method)
                     ),
                 ),
@@ -388,6 +392,18 @@ class SessionService:
         )
 
     # ---- helpers ----
+
+    def _prior(self, session: rec.Session) -> PriorDiagnosis | None:
+        """The last teaching turn's steps and gap, so the tutor's code can check repair."""
+        diagnosis = self._store.latest_diagnosis(session.id)
+        for attempt in reversed(self._store.list_attempts(session.id)):
+            steps = self._store.list_steps(attempt.id)
+            if attempt.phase != "stress_test" and steps:
+                return PriorDiagnosis(
+                    steps=[Step(role=s.role, status=s.status, quote=s.quote) for s in steps],
+                    main_gap=diagnosis.main_gap if diagnosis else None,
+                )
+        return None
 
     def _open(self, session_id: UUID) -> rec.Session:
         session = self._store.get_session(session_id)

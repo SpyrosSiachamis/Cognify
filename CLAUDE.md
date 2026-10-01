@@ -48,8 +48,9 @@ curl localhost:8000/health       # {"status":"ok"}
 ```
 frontend/            Next.js app
 backend/app/         FastAPI entry point, routes, Pydantic models
-backend/app/common/  vocab (the shared glossary values)
-backend/app/user/    API request and response models (schema)
+backend/app/common/  vocab (the shared glossary values), contract (API example helpers)
+backend/app/session/ Master session API models: start, attempt, verdict, exit
+backend/app/user/    learner and strategy view models, error shape
 backend/app/         ai_gateway, tutor, strategy_choice, novelty, verification,
                      history (schema, interface, memory): one folder per module
 backend/app/seed/    seeded demo history (Maria, Nikos)

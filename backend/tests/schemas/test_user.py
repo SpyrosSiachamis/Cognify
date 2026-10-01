@@ -4,6 +4,8 @@ import json
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from app.session import schema as session
+from app.tutor import schema as tutor
 from app.user import schema as user
 
 MARIA = "16e82ef2-adee-4671-8393-c6b50ac91672"
@@ -79,10 +81,10 @@ STRATEGIES = {"student_id": MARIA, "display_name": "Maria", "is_seeded": True,
 ERROR = {"error": {"code": "model_unavailable", "message": "Please try again.", "retryable": True}}
 
 EXAMPLES = [
-    (user.AnswerRequest, ANSWER_REQUEST), (user.AnswerResponse, ANSWER),
-    (user.SessionStartRequest, START_REQUEST), (user.SessionStartResponse, START),
-    (user.StudentAttempt, ATTEMPT), (user.TutorTurn, TEACH), (user.TutorTurn, STRESS),
-    (user.VerdictTurn, VERDICT), (user.VerdictTurn, NOT_YET), (user.ExitResponse, EXIT),
+    (tutor.AnswerRequest, ANSWER_REQUEST), (tutor.AnswerResponse, ANSWER),
+    (session.SessionStartRequest, START_REQUEST), (session.SessionStartResponse, START),
+    (session.StudentAttempt, ATTEMPT), (tutor.TutorTurn, TEACH), (tutor.TutorTurn, STRESS),
+    (session.VerdictTurn, VERDICT), (session.VerdictTurn, NOT_YET), (session.ExitResponse, EXIT),
     (user.LearnerView, LEARNER), (user.StrategyView, STRATEGIES), (user.ErrorResponse, ERROR),
 ]
 
@@ -99,13 +101,13 @@ def test_contract_examples_validate(model, data):
 
 
 def test_attempt_response_picks_the_right_turn():
-    adapter = TypeAdapter(user.AttemptResponse)
-    assert isinstance(adapter.validate_python(TEACH), user.TutorTurn)
-    assert isinstance(adapter.validate_python(VERDICT), user.VerdictTurn)
+    adapter = TypeAdapter(session.AttemptResponse)
+    assert isinstance(adapter.validate_python(TEACH), tutor.TutorTurn)
+    assert isinstance(adapter.validate_python(VERDICT), session.VerdictTurn)
 
 
 def test_openapi_shows_examples_with_uuids():
-    schema = user.TutorTurn.model_json_schema()
+    schema = tutor.TutorTurn.model_json_schema()
     assert schema["examples"][0]["session_id"] == SESSION
 
 
@@ -123,7 +125,7 @@ def field_names(schema):
 
 
 def test_no_hidden_fields_in_any_response():
-    for model in (user.AnswerResponse, user.SessionStartResponse, user.TutorTurn, user.VerdictTurn,
+    for model in (tutor.AnswerResponse, session.SessionStartResponse, tutor.TutorTurn, session.VerdictTurn,
                   user.LearnerView, user.StrategyView, user.ErrorResponse):
         names = field_names(model.model_json_schema())
         assert not {"hidden_rubric", "hidden_solution", "solution", "verifier_notes", "note"} & names
@@ -133,72 +135,72 @@ def test_unknown_gap_type_rejected():
     data = copy.deepcopy(TEACH)
     data["diagnosis"]["main_gap"] = "laziness"
     with pytest.raises(ValidationError):
-        user.TutorTurn.model_validate(data)
+        tutor.TutorTurn.model_validate(data)
 
 
 def test_numeric_confidence_rejected():
     data = copy.deepcopy(TEACH)
     data["diagnosis"]["confidence"] = 0.7
     with pytest.raises(ValidationError):
-        user.TutorTurn.model_validate(data)
+        tutor.TutorTurn.model_validate(data)
 
 
 def test_extra_field_rejected():
     with pytest.raises(ValidationError):
-        user.TutorTurn.model_validate(bad(TEACH, hidden_rubric=["x"]))
+        tutor.TutorTurn.model_validate(bad(TEACH, hidden_rubric=["x"]))
 
 
 def test_non_uuid_id_rejected():
     with pytest.raises(ValidationError):
-        user.SessionStartRequest.model_validate(bad(START_REQUEST, student_id="maria"))
+        session.SessionStartRequest.model_validate(bad(START_REQUEST, student_id="maria"))
     with pytest.raises(ValidationError):
-        user.TutorTurn.model_validate(bad(TEACH, session_id="123"))
+        tutor.TutorTurn.model_validate(bad(TEACH, session_id="123"))
 
 
 def test_wrong_step_without_quote_rejected():
     data = copy.deepcopy(TEACH)
     data["diagnosis"]["steps"][1].pop("quote")
     with pytest.raises(ValidationError, match="quote"):
-        user.TutorTurn.model_validate(data)
+        tutor.TutorTurn.model_validate(data)
 
 
 def test_empty_message_rejected():
     with pytest.raises(ValidationError):
-        user.TutorTurn.model_validate(bad(TEACH, message=""))
+        tutor.TutorTurn.model_validate(bad(TEACH, message=""))
     with pytest.raises(ValidationError):
-        user.StudentAttempt.model_validate({"text": ""})
+        session.StudentAttempt.model_validate({"text": ""})
 
 
 def test_verified_without_independence_rejected():
     data = copy.deepcopy(VERDICT)
     data["verdict"]["independent"] = False
     with pytest.raises(ValidationError, match="independent"):
-        user.VerdictTurn.model_validate(data)
+        session.VerdictTurn.model_validate(data)
 
 
 def test_verified_must_end_the_session():
     with pytest.raises(ValidationError, match="ends the session"):
-        user.VerdictTurn.model_validate(bad(VERDICT, session_over=False))
+        session.VerdictTurn.model_validate(bad(VERDICT, session_over=False))
 
 
 def test_follow_up_only_in_stress_test():
     with pytest.raises(ValidationError, match="stress_test"):
-        user.TutorTurn.model_validate(bad(TEACH, follow_up={"problem": "x"}))
+        tutor.TutorTurn.model_validate(bad(TEACH, follow_up={"problem": "x"}))
     data = copy.deepcopy(STRESS)
     data.pop("follow_up")
     with pytest.raises(ValidationError, match="stress_test"):
-        user.TutorTurn.model_validate(data)
+        tutor.TutorTurn.model_validate(data)
 
 
 def test_level1_never_counts_as_evidence_and_exit_records_none():
     with pytest.raises(ValidationError):
-        user.AnswerResponse.model_validate(bad(ANSWER, counts_as_evidence=True))
+        tutor.AnswerResponse.model_validate(bad(ANSWER, counts_as_evidence=True))
     with pytest.raises(ValidationError):
-        user.ExitResponse.model_validate(bad(EXIT, evidence_recorded=True))
+        session.ExitResponse.model_validate(bad(EXIT, evidence_recorded=True))
 
 
 def test_experiment_flag_must_match_mode():
     data = copy.deepcopy(TEACH)
     data["method"]["mode"] = "experiment"
     with pytest.raises(ValidationError, match="experiment"):
-        user.TutorTurn.model_validate(data)
+        tutor.TutorTurn.model_validate(data)

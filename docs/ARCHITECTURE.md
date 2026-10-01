@@ -5,7 +5,7 @@ Scope lives in `SPEC.md`. Rules live in `CLAUDE.md`. Field-level detail lives in
 
 ## The idea in one paragraph
 
-The student only ever talks to **one agent**. That agent diagnoses the student, gets a teaching method from a **rule-based policy tool**, and writes either a teaching reply or a follow-up problem. A separate **verification LLM** checks everything before the student sees it. **Plain code** owns the flow, the history and the final VERIFIED decision. The model never grades its own teaching.
+The student only ever talks to **one tutor**. Inside it, a **reasoning LLM** diagnoses the student's work without knowing how we will teach; **code** applies the evidence rules, checks repair and gets a teaching method from the **rule-based `choose_strategy`**; a **teaching LLM** writes one reply for that diagnosis and method, or a follow-up problem. A separate **verification LLM** checks everything before the student sees it. **Plain code** owns the flow, the history and the final VERIFIED decision. The model never grades its own teaching.
 
 ## The loop
 
@@ -14,10 +14,12 @@ Student
   |  attempt (text)
   v
 +--------------------------------------------+        +---------+
-| TUTOR AGENT (reasoning + tutor in one)     |<------>| HISTORY |
-|  1. split the answer into steps, diagnose  |  tool  +---------+
-|  2. call choose_strategy (rule-based)      |
-|  3. write the reply OR the follow-up       |
+| TUTOR (app/tutor/agent.py)                 |        | HISTORY |
+|  1. reasoning LLM: steps, diagnosis        |        +----+----+
+|     (no method, no history)                |             |
+|  2. code: evidence rules, repair check     |             |
+|  3. code: choose_strategy  <---------------+-------------+
+|  4. teaching LLM: the reply OR follow-up   |
 +--------------------+-----------------------+
                      | draft
                      v
@@ -27,7 +29,7 @@ Student
 +--------------------+-----------------------+
         approved     |      rejected
             |        |         |
-            v        |         +--> regenerate with the reason (max 2), then safe fallback
+            v        |         +--> regenerate step 4 only, with the reason (max 2), then safe fallback
          Student     |
 ```
 
@@ -38,7 +40,9 @@ At the end of the loop the same verification LLM also judges the student's follo
 | Piece | Kind | Owns |
 |---|---|---|
 | Session state machine | Code | Which phase we are in, hint counts, caps, what happens next |
-| Tutor agent | AI | Step splitting, diagnosis with evidence, teaching reply, probe, follow-up problem |
+| Reasoning LLM | AI | Step splitting, diagnosis with evidence; may say "no gap" or "insufficient evidence". Never sees the method |
+| Teaching LLM | AI | One reply for the given diagnosis and method (or a probe), follow-up problem |
+| Evidence rules and repair | Code | Quotes must be the student's words; all missing means probe; all correct means no gap; repair = the gap step is now correct |
 | `choose_strategy` tool | Code | Picking the teaching method from history, including experiments |
 | Verification LLM | AI | Judging replies, follow-up problems and the student's follow-up attempt |
 | Novelty check | Code | Rejecting a follow-up the student has already seen (normalised text hash) |
@@ -132,14 +136,15 @@ Optional speedup: start the next phase's work while the verifier runs only if it
 
 ## Backend layout
 
-The backend is organised into six domain-oriented modules. Related functionality stays grouped inside a module, so team members can work within relatively independent boundaries.
+The backend is organised into domain-oriented modules. Related functionality stays grouped inside a module, so team members can work within relatively independent boundaries.
 
 ```
 backend/app/
-  common/          vocab: the shared glossary values
-  user/            API request and response models
+  common/          vocab: the shared glossary values; contract: API example helpers
+  session/         Master session API models: start, attempt, verdict, exit
+  user/            learner and strategy view models, error shape
   ai_gateway/      all model calls, timeouts, retries, validation
-  tutor/           state machine + the agent run
+  tutor/           state machine + the agent run; Level 1 and tutor-turn API models
   strategy_choice/ the choose_strategy tool and the policy rules
   novelty/         repeat detection for follow-up problems
   verification/    the three verifier modes

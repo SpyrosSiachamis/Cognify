@@ -205,8 +205,9 @@ futureed/
 |   `-- lib: backend client, math helpers
 |-- backend/
 |   |-- app/               entry point, routes, checked data shapes
-|   |   `-- common/        vocab (the shared glossary values)
-|   |   `-- user/          API request and response models
+|   |   `-- common/        vocab (the shared glossary values), API example helpers
+|   |   `-- session/       Master session API models (start, attempt, verdict, exit)
+|   |   `-- user/          learner and strategy view models, error shape
 |   |   `-- ai_gateway/, tutor/, strategy_choice/, novelty/, verification/,
 |   |       history/       (schema, interface, memory), one folder per module
 |   |   `-- seed/          seeded demo history (Maria, Nikos)

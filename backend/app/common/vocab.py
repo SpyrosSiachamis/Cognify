@@ -42,6 +42,9 @@ State = Literal["strong", "fragile", "weak", "untested", "verified"]
 
 Confidence = Literal["low", "medium", "high"]
 
+# Whether an attempt holds enough reasoning to diagnose; insufficient means ask a probe.
+Evidence = Literal["sufficient", "insufficient"]
+
 # The nine reasoning dimensions (SPEC F8).
 Dimension = Literal[
     "correctness",

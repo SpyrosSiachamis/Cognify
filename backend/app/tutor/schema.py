@@ -1,4 +1,4 @@
-"""Tutor shapes (docs/API_CONTRACT.md, Part B): the choose_strategy tool and the agent's output."""
+"""Tutor shapes (docs/API_CONTRACT.md, Part B): choose_strategy, the reasoning and teaching steps, and their output."""
 
 from typing import Annotated, Literal
 from uuid import UUID
@@ -11,6 +11,7 @@ from app.common.vocab import (
     DecisionMode,
     Difficulty,
     Dimension,
+    Evidence,
     GapType,
     Perturbation,
     Phase,
@@ -20,7 +21,6 @@ from app.common.vocab import (
     StepStatus,
     Strategy,
 )
-from app.history.schema import Concept, ConceptState, Outcome, Student
 
 Text = Annotated[str, Field(min_length=1)]
 
@@ -61,39 +61,6 @@ class ChooseStrategyResult(StrictModel):
     last_success_days_ago: int | None = Field(default=None, ge=0)
 
 
-# ---- tutor agent input ----
-
-
-class TranscriptLine(StrictModel):
-    """One earlier message in this session, oldest first."""
-
-    speaker: Literal["student", "tutor"]
-    text: Text
-
-
-class TutorInput(StrictModel):
-    """Built by code for one tutor run; sent to the model as JSON.
-
-    The current attempt is the primary evidence. Student, concepts, concept
-    states and outcomes are history records passed as-is (read via HistoryStore).
-    """
-
-    problem: Text
-    attempt: Text
-    phase: Phase
-    hints_used: int = Field(default=0, ge=0)
-    student: Student
-    concepts: list[Concept] = []
-    concept_states: list[ConceptState] = []
-    past_outcomes: list[Outcome] = []
-    strategy: ChooseStrategyResult | None = None
-    hidden_solution: str | None = None
-    retry_reason: RejectionReason | None = None
-    retry_note: str | None = None
-    transcript: list[TranscriptLine] = []
-    target_gap: GapType | None = None
-
-
 # ---- tutor agent output ----
 
 
@@ -128,24 +95,78 @@ class DimensionRating(StrictModel):
     evidence: Text
 
 
-class TutorTeachingOutput(StrictModel):
-    """Produced by the tutor agent for a teaching turn; read by verification, then by code."""
+class TutorDiagnosis(StrictModel):
+    """Produced by the reasoning step from the student's work alone (no method, no history).
+
+    main_gap is None when no gap is demonstrated: either every step holds, or the
+    evidence is insufficient to tell (then code asks a probe instead of teaching).
+    """
 
     steps: list[Step] = Field(min_length=1)
     dimensions: list[DimensionRating] = []
-    main_gap: GapType
+    main_gap: GapType | None = None
     alternatives: list[Alternative] = []
     confidence: Confidence
+    evidence: Evidence = "sufficient"
+
+    @model_validator(mode="after")
+    def diagnosis_is_consistent(self) -> "TutorDiagnosis":
+        if any(alt.gap == self.main_gap for alt in self.alternatives):
+            raise ValueError("the main gap must not also appear in alternatives")
+        if self.evidence == "insufficient" and self.confidence != "low":
+            raise ValueError("insufficient evidence means low confidence")
+        if self.evidence == "sufficient" and not any(step.quote for step in self.steps):
+            raise ValueError("a diagnosis needs at least one quoted piece of student evidence")
+        if self.main_gap is None and self.evidence == "sufficient" and any(s.status == "wrong" for s in self.steps):
+            raise ValueError("a wrong step needs a main gap")
+        return self
+
+
+class TutorTeachingOutput(TutorDiagnosis):
+    """One teaching turn: the diagnosis, plus code's repair check and the approved reply."""
+
     gap_repaired: bool
     reply: Text
 
-    @model_validator(mode="after")
-    def diagnosis_is_consistent(self) -> "TutorTeachingOutput":
-        if any(alt.gap == self.main_gap for alt in self.alternatives):
-            raise ValueError("the main gap must not also appear in alternatives")
-        if not any(step.quote for step in self.steps):
-            raise ValueError("a diagnosis needs at least one quoted piece of student evidence")
-        return self
+
+class PriorDiagnosis(StrictModel):
+    """The previous teaching turn of this session, for the repair check. Built by the session flow."""
+
+    steps: list[Step] = Field(min_length=1)
+    main_gap: GapType | None = None
+
+
+# ---- what the two LLM steps receive (sent as JSON) ----
+
+TeachingMode = Literal["teach", "probe"]
+
+
+class ReasoningInput(StrictModel):
+    """The reasoning step sees the student's work only: no method, no history, no solution route."""
+
+    problem: Text
+    attempt: Text
+    final_answer: str | None = None
+
+
+class TeachingInput(StrictModel):
+    """The teaching step gets the finished diagnosis and code's choice of mode and method."""
+
+    problem: Text
+    attempt: Text
+    mode: TeachingMode
+    diagnosis: TutorDiagnosis
+    gap_step: Step | None = None
+    strategy: ChooseStrategyResult | None = None
+    hints_used: int = Field(default=0, ge=0)
+    solution_steps: list[Text] = []
+    language: Literal["English", "Greek"] = "English"
+    retry_reason: RejectionReason | None = None
+    retry_note: str | None = None
+
+
+class TeachingReply(StrictModel):
+    reply: Text
 
 
 class FollowUpDraft(StrictModel):
@@ -216,7 +237,7 @@ class AnswerResponse(StrictModel):
 
 class DiagnosisView(StrictModel):
     steps: list[Step] = Field(min_length=1)
-    main_gap: GapType
+    main_gap: GapType | None = None
     alternatives: list[Alternative] = []
     confidence: Confidence
 

@@ -2,7 +2,7 @@
 
 Behaviour and rules of the Cognify API. The Pydantic models (exposed through FastAPI's OpenAPI at `/docs`) are the source of truth for exact field types. The JSON examples below are illustrative first drafts of those models. All examples use the Maria ball-problem demo.
 
-Design in brief: the student talks to one tutor interface. A **tutor agent** splits the answer into steps, diagnoses, calls the rule-based `choose_strategy` tool, and writes a reply or a follow-up problem. A **verification LLM** checks every reply or follow-up before the student sees it, and judges the student's follow-up attempt. **Code** owns the flow, the method choice, history and the final VERIFIED decision.
+Design in brief: the student talks to one tutor interface. Behind it, a **reasoning step** (LLM) splits the answer into steps and diagnoses it without knowing the teaching method; code then applies the rules, checks repair and calls the rule-based `choose_strategy`; a **teaching step** (LLM) writes a reply for that diagnosis and method, or a follow-up problem. A **verification LLM** checks every reply or follow-up before the student sees it, and judges the student's follow-up attempt. **Code** owns the flow, the method choice, history and the final VERIFIED decision.
 
 ## Part A: Frontend <-> Backend
 
@@ -37,9 +37,9 @@ Design in brief: the student talks to one tutor interface. A **tutor agent** spl
 
 **`StudentAttempt`**: just the student's text. Same shape on every turn.
 
-**`TutorTurn`**: `session_id`; `phase`; `message` (the approved reply); optional `diagnosis` (steps with role, status and a quote of the student's words; main gap; alternatives with a confidence label each; confidence label); optional `method` (name, `mode`, experiment flag, reason); optional `follow_up` (problem text only, never the rubric); `hints_used`; `reply_check` (approved flag and a short summary).
+**`TutorTurn`**: `session_id`; `phase`; `message` (the approved reply); optional `diagnosis` (steps with role, status and a quote of the student's words; main gap, or `null` when no gap is demonstrated (every step holds) or the evidence is insufficient (then the reply is a probe); alternatives with a confidence label each; confidence label); optional `method` (name, `mode`, experiment flag, reason; `null` on a probe or when nothing needs teaching); optional `follow_up` (problem text only, never the rubric); `hints_used`; `reply_check` (approved flag and a short summary).
 
-**`Verdict`**: `result` (`VERIFIED` or `NOT YET`); `evidence`; `independent`; `remaining_gap`; `changes` with the before and after of the concept state and of the strategy counts. The verdict response also carries `session_over`: `true` after VERIFIED or after the second NOT YET (then `message` says what was learned and offers to exit), `false` after a first NOT YET. After a `false`, the student sends a normal attempt and gets a `teach` turn.
+**`Verdict`**: `result` (`VERIFIED` or `NOT YET`); `evidence`; `independent`; `remaining_gap`; `changes` with the before and after of the concept state and of the strategy counts (`changes.strategy` is `null` when the session used no teaching method, for example a correct first thought). The verdict response also carries `session_over`: `true` after VERIFIED or after the second NOT YET (then `message` says what was learned and offers to exit), `false` after a first NOT YET. After a `false`, the student sends a normal attempt and gets a `teach` turn.
 
 **`LearnerView`**: student, seeded flag, concepts each with state and evidence lines.
 
@@ -291,7 +291,7 @@ For the teammate building the AI side. These never cross to the frontend.
 
 - **In:** gap type, concept, student.
 - **Out:** method, decision mode, reason, evidence counts (plus days since the last success).
-- **Consumer:** the tutor agent (calls it as a tool); code records the choice.
+- **Consumer:** `AgentTutor` calls it in code after the reasoning step (not a model tool call), for the diagnosed gap; code records the choice. No call on a probe or when there is no gap.
 
 ```json
 { "student_id": "16e82ef2-adee-4671-8393-c6b50ac91672", "gap_type": "recognition", "concept": "constant-acceleration kinematics" }
@@ -309,9 +309,14 @@ For the teammate building the AI side. These never cross to the frontend.
 
 ### Tutor agent output
 
-- **In:** the student's text, session state, and the `choose_strategy` result.
-- **Out:** steps with role, status and quote; dimension ratings with evidence; main gap, alternatives, confidence label; gap-repaired flag; the reply or probe, or the follow-up problem with concept invariant, target gap, target step, perturbation, difficulty and hidden rubric.
-- **Consumer:** the verification LLM (first), then code, which builds the `TutorTurn` for the frontend.
+One teaching turn is two model calls with code in between (`app/tutor/agent.py`):
+
+- **Reasoning step in:** problem, the student's text, the final answer. Never the method, the history or the solution route.
+- **Reasoning step out (`TutorDiagnosis`):** steps with role, status and quote; dimension ratings with evidence; `main_gap` (nullable); alternatives; confidence label; `evidence` (`sufficient` or `insufficient`).
+- **Code:** a quote not in the student's text makes that step missing; all steps missing means insufficient evidence; all steps correct means no gap. `gap_repaired` is decided by code: the step where the previous gap showed (`TeachRequest.prior`) is now correct. The mode is `teach`, `probe` (insufficient evidence, no gap being taught) or `acknowledge` (no gap, or repaired: fixed message, no teaching call).
+- **Teaching step in:** the finished diagnosis, the gap step, the `choose_strategy` result (or none for a probe), and the retry reason after a rejection. **Out:** the reply only. On rejection only this step reruns, so the diagnosis cannot change.
+- **Out of the turn (`TutorTeachingOutput`):** the diagnosis fields plus `gap_repaired` and the approved reply; or the follow-up problem with concept invariant, target gap, target step, perturbation, difficulty and hidden rubric.
+- **Consumer:** the verification LLM checks the reply first; then code builds the `TutorTurn` for the frontend.
 
 Teaching turn:
 

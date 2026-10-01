@@ -14,10 +14,12 @@ from app.common.vocab import GapType
 from app.tutor.schema import (
     ChooseStrategyResult,
     FollowUpDraft,
+    PriorDiagnosis,
     TutorFollowUpOutput,
     TutorTeachingOutput,
 )
-from app.user.schema import ReplyCheckView, Solution
+from app.session.schema import Solution
+from app.tutor.schema import ReplyCheckView
 from app.verification.schema import StudentCheckResult
 
 
@@ -39,11 +41,12 @@ class TeachRequest(BaseModel):
     teach_turns: int
     force_experiment: bool
     after_not_yet: bool
+    prior: PriorDiagnosis | None = None  # the previous teaching turn, for code's repair check
 
 
 class TeachResult(BaseModel):
     output: TutorTeachingOutput
-    method: ChooseStrategyResult
+    method: ChooseStrategyResult | None  # None for a probe or an acknowledgement: no method was used
     reply_check: ReplyCheckView
 
 
@@ -52,7 +55,7 @@ class FollowUpRequest(BaseModel):
     problem: str
     concept_name: str
     solution: Solution
-    main_gap: GapType
+    main_gap: GapType | None  # None when the student was right from the start (skip rule)
     hints_used: int
     retry_reason: str | None = None  # set when the last draft was a repeat
 
