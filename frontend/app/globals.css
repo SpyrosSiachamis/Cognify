@@ -482,3 +482,29 @@ h3{font-family:var(--f-display);font-weight:560;font-size:21px;line-height:1.15;
 .ladder .lt>span,.tl li>div>span{display:block}
 /* Same quirks-mode difference for every kicker label that sits alone on its line. */
 .kicker{display:block}
+/* Performance: let the browser move these layers on the GPU instead of repainting them. */
+.stage{contain:strict}
+#cvScene,.cursor-light{will-change:transform}
+.beam,.vig{will-change:opacity}
+
+/* ============ fast mode ============
+   The prototype's full-screen blend modes, live blurs and masks are beautiful but very heavy on big
+   screens. These rules keep the same look with layers the GPU can move without repainting. */
+/* the darkness with a soft hole around the cursor: one big layer that is moved, never repainted */
+.veil{inset:auto;left:0;top:0;width:300vmax;height:300vmax;margin:-150vmax 0 0 -150vmax;will-change:transform;
+  -webkit-mask-image:none;mask-image:none;
+  background:radial-gradient(circle 340px at 50% 50%,color-mix(in srgb,var(--ground) 7%,transparent) 0,color-mix(in srgb,var(--ground) 48%,transparent) 55%,color-mix(in srgb,var(--ground) 88%,transparent) 100%)}
+/* light layers without blend modes (on this dark room they look almost the same) */
+.glow{mix-blend-mode:normal;opacity:.85}
+body.dim .glow{opacity:.2}
+.beam{mix-blend-mode:normal;filter:none;width:30vw;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--accent) 6%,transparent),transparent)}
+.cursor-light{mix-blend-mode:normal}
+.grain{mix-blend-mode:normal;opacity:.035}
+.flash{mix-blend-mode:normal}
+/* no live blur behind the top bar or the drawer backdrop */
+.bar{-webkit-backdrop-filter:none;backdrop-filter:none;background:linear-gradient(180deg,color-mix(in srgb,var(--ground) 96%,transparent) 55%,color-mix(in srgb,var(--ground) 0%,transparent))}
+.scrim{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(4,2,4,.74)}
+/* paper texture without a blend mode */
+.paper::after{mix-blend-mode:normal;opacity:.12}
+/* the headline shimmer repainted its text every frame; keep the gold, drop the endless animation */
+h1 em,h2 em{animation:none;background-position:0 0;filter:none;text-shadow:0 2px 16px rgba(0,0,0,.35)}

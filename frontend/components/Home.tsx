@@ -34,7 +34,7 @@ export function Home({ onStart }: { onStart: () => void }) {
       <p className="lede">Paste any problem. Cognify learns how you think, teaches the way that works for you, then checks you can do the next one alone.</p>
       <div className="paper ask">
         <div className="spread">
-          <h3>What are you working on?</h3>
+          <h3 aria-level={2}>What are you working on?</h3>
           <button
             type="button"
             className="try"

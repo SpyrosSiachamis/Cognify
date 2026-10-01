@@ -10,6 +10,7 @@ export function Room() {
   const motes = useRef<HTMLCanvasElement>(null);
   const sparks = useRef<HTMLCanvasElement>(null);
   const cursor = useRef<HTMLDivElement>(null);
+  const veil = useRef<HTMLDivElement>(null);
   const flash = useRef<HTMLDivElement>(null);
 
   useEffect(
@@ -20,6 +21,7 @@ export function Room() {
         motes: motes.current!,
         sparks: sparks.current!,
         cursor: cursor.current!,
+        veil: veil.current!,
         flash: flash.current!,
       }),
     [],
@@ -29,7 +31,7 @@ export function Room() {
     <>
       <div className="stage" ref={stage} aria-hidden="true">
         <canvas id="cvScene" ref={scene} />
-        <div className="veil" />
+        <div className="veil" ref={veil} />
         <div className="glow" />
         <div className="beam" />
         <div className="cursor-light" ref={cursor} />

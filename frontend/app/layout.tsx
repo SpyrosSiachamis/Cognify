@@ -16,6 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* Load the main fonts early so text does not jump when they arrive. */}
+        <link rel="preload" href="/fonts/Fraunces-italic-latin-feced2.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/Fraunces-normal-latin-39ce20.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/HankenGrotesk-normal-latin-605034.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/Newsreader-normal-latin-b76914.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </head>
       <body>{children}</body>
     </html>

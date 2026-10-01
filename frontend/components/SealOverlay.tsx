@@ -28,7 +28,7 @@ export function SealOverlay({ onContinue }: { onContinue: () => void }) {
   }, [open]);
 
   return (
-    <div className={`seal-wrap${open ? " show" : ""}`} role="dialog" aria-modal="true" aria-label="Transfer verified" aria-hidden={!open}>
+    <div className={`seal-wrap${open ? " show" : ""}`} role="dialog" aria-modal="true" aria-label="Transfer verified" aria-hidden={!open} inert={!open}>
       <div className="rays" />
       <div className="seal-inner">
         <svg className="seal" viewBox="0 0 300 300" aria-hidden="true">
