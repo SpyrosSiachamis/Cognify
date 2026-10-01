@@ -42,6 +42,7 @@ TURN_TIMEOUT_SECONDS = 60.0  # one call to the agent; a slow turn becomes the sa
 
 FIRST_THOUGHT_PROMPT = "Before I help, what would you try first? Even an incomplete idea is useful."
 EMPTY_PROBE = "What is one thing you notice in the problem?"
+EMPTY_STRESS_TEST = "Take your time. Write what you would try, even if it is not finished."
 SAFE_FALLBACK = "What would you try next?"
 
 
@@ -76,6 +77,12 @@ class SessionService:
     def _lock(self, session_id: UUID) -> asyncio.Lock:
         return self._locks.setdefault(session_id, asyncio.Lock())
 
+    def _forget_lock(self, session_id: UUID) -> None:
+        """Drop the lock of a session that is over or never existed, so ids cannot pile up."""
+        session = self._store.get_session(session_id)
+        if session is None or session.status != "active":
+            self._locks.pop(session_id, None)
+
     # ---- start and exit ----
 
     async def start(self, req: SessionStartRequest) -> SessionStartResponse:
@@ -104,38 +111,37 @@ class SessionService:
         )
 
     async def exit(self, session_id: UUID) -> ExitResponse:
-        async with self._lock(session_id):  # wait for a turn that is still running
-            session = self._open(session_id)
-            if session.hidden_solution is None:
-                raise _internal("Session has no solution.")
-            session.phase = "exited"
-            session.status = "exited"
-            session.ended_at = rec.now()
-            self._store.update_session(session)  # no outcome is written: exit records no evidence
-            self._locks.pop(session_id, None)
-            return ExitResponse(
-                phase="exited",
-                solution=Solution(**session.hidden_solution.model_dump()),
-                evidence_recorded=False,
-            )
+        try:
+            async with self._lock(session_id):  # wait for a turn that is still running
+                session = self._open(session_id)
+                if session.hidden_solution is None:
+                    raise _internal("Session has no solution.")
+                session.phase = "exited"
+                session.status = "exited"
+                session.ended_at = rec.now()
+                self._store.update_session(session)  # no outcome is written: exit records no evidence
+                return ExitResponse(
+                    phase="exited",
+                    solution=Solution(**session.hidden_solution.model_dump()),
+                    evidence_recorded=False,
+                )
+        finally:
+            self._forget_lock(session_id)
 
     # ---- the turn endpoint ----
 
     async def attempt(self, session_id: UUID, text: str) -> AttemptResponse:
-        async with self._lock(session_id):  # the state is read inside the lock, after any turn ahead of us
-            session = self._open(session_id)
-            if not text.strip():
-                # Never explain instead of asking; nothing is saved and the agent is not called
-                return self._turn(
-                    session, EMPTY_PROBE, ReplyCheckView(approved=True, summary="Asked one short question.")
-                )
-            if session.phase == "stress_test":
-                response = await self._judge(session, text)
-            else:
-                response = await self._teach(session, text)
-            if isinstance(response, VerdictTurn) and response.session_over:
-                self._locks.pop(session_id, None)
-            return response
+        try:
+            async with self._lock(session_id):  # the state is read inside the lock, after any turn ahead of us
+                session = self._open(session_id)
+                if not text.strip():
+                    # Never explain instead of asking; nothing is saved and the agent is not called
+                    return self._blank_turn(session)
+                if session.phase == "stress_test":
+                    return await self._judge(session, text)
+                return await self._teach(session, text)
+        finally:
+            self._forget_lock(session_id)
 
     async def _teach(self, session: rec.Session, text: str) -> TutorTurn:
         concept = self._concept(session)
@@ -481,11 +487,24 @@ class SessionService:
         return EvidenceCounts(uses=0, independent_successes=0)
 
     @staticmethod
-    def _turn(session: rec.Session, message: str, check: ReplyCheckView) -> TutorTurn:
+    def _turn(
+        session: rec.Session, message: str, check: ReplyCheckView, follow_up: FollowUpView | None = None
+    ) -> TutorTurn:
         return TutorTurn(
             session_id=session.id,
             phase="teach" if session.phase == "verdict" else session.phase,  # a teaching turn, never a verdict
             message=message,
+            follow_up=follow_up,
             hints_used=session.hints_used,
             reply_check=check,
         )
+
+    def _blank_turn(self, session: rec.Session) -> TutorTurn:
+        """Blank text: one short question, no help. In the stress test the same problem is shown again."""
+        check = ReplyCheckView(approved=True, summary="Asked one short question.")
+        if session.phase != "stress_test":
+            return self._turn(session, EMPTY_PROBE, check)
+        saved = self._store.latest_follow_up(session.id)
+        if saved is None:
+            raise _internal("Session is in the stress test without a follow-up.")
+        return self._turn(session, EMPTY_STRESS_TEST, check, FollowUpView(problem=saved.problem_text))
