@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.seed import autoseed
+from app.user.errors import register_error_handlers
+from app.user.router import router as user_router
 
 
 @asynccontextmanager
@@ -21,8 +23,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+register_error_handlers(app)
+app.include_router(user_router)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    # Kept alongside /api/health for Docker and the curl check in CLAUDE.md
     return {"status": "ok"}
