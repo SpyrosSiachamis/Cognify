@@ -51,7 +51,7 @@ def show_trace(tutor: AgentTutor) -> None:
     for dim in d.dimensions:
         print(f"    {dim.name:<16} {dim.state:<9} {DIM}{dim.evidence}{END}")
     print(f"{BOLD}[2 rules]{END} mode {BOLD}{trace.mode}{END} · gap step {trace.gap_step.role if trace.gap_step else '-'}"
-          f" · repaired {trace.gap_repaired}")
+          f" · repaired {trace.gap_repaired}" + (f" {DIM}({trace.repair_reason}){END}" if trace.repair_reason else ""))
     s = trace.strategy
     print(f"{BOLD}[3 choose_strategy]{END} " + (f"{s.method} ({s.mode}) · {s.reason}" if s else "no method (nothing to teach)"))
     for i, draft in enumerate(trace.drafts, 1):

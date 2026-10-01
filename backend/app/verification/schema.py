@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from app.common.vocab import Rating, RejectionReason, Strategy
+from app.common.vocab import GapType, Rating, RejectionReason, Strategy
 
 Text = Annotated[str, Field(min_length=1)]
 
@@ -39,6 +39,11 @@ class ReplyCheckInput(StrictModel):
     method: Strategy | None = None
     hints_used: int = Field(default=0, ge=0)
     hidden_solution: str | None = None
+    # What the reply is meant to target and how (filled by the tutor; all optional).
+    main_gap: GapType | None = None
+    gap_step: str | None = None  # the step role, with the student's own words if any
+    method_definition: str | None = None  # what the chosen method requires of a reply
+    language: str | None = None
 
 
 class ReplyCheckResult(_Verdict):

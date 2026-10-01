@@ -158,6 +158,7 @@ class TeachingInput(StrictModel):
     diagnosis: TutorDiagnosis
     gap_step: Step | None = None
     strategy: ChooseStrategyResult | None = None
+    method_definition: str | None = None  # what strategy.method requires; the verifier checks the same text
     hints_used: int = Field(default=0, ge=0)
     solution_steps: list[Text] = []
     language: Literal["English", "Greek"] = "English"

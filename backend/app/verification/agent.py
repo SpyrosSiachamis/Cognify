@@ -20,6 +20,7 @@ reply_checker = Agent(
     output_type=ReplyCheckResult,
     instructions=REPLY_INSTRUCTIONS,
     retries=1,
+    model_settings={"temperature": 0},
     name="reply_checker",
 )
 

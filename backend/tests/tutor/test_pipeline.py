@@ -11,8 +11,8 @@ from app.ai_gateway import gateway
 from app.seed.data import MARIA_ID, NIKOS_ID
 from app.tutor.agent import MAX_REGENERATIONS, AgentTutor, final_answers
 from app.tutor.language import ACKNOWLEDGE_REPLY, FALLBACK_REPLY, student_language, written_in
-from app.tutor.repair import gap_step, repaired
-from app.tutor.schema import PriorDiagnosis, Step
+from app.tutor.repair import assess_repair, gap_step, repaired
+from app.tutor.schema import DimensionRating, PriorDiagnosis, Step, TutorDiagnosis
 from app.tutor.strategy import choose_strategy
 
 from .conftest import MARIA_FIRST_THOUGHT, SOLUTION, teach_request
@@ -117,19 +117,64 @@ RIGHT = Step(role="choose_method", status="correct", quote="v^2 = u^2 - 2gh")
 OTHER = Step(role="compute", status="correct", quote="2.04 s")
 
 
+def reading(*steps: Step, gap: str | None = "procedure", dims: list[tuple[str, str]] = ()) -> TutorDiagnosis:
+    """The model's reading of the current turn, for the repair check."""
+    return TutorDiagnosis(steps=list(steps), main_gap=gap, confidence="medium",
+                          dimensions=[DimensionRating(name=n, state=st, evidence="x") for n, st in dims])
+
+
+STALLED = PriorDiagnosis(steps=[OTHER, MISSING], main_gap="recognition")
+
+
 @pytest.mark.parametrize(
     ("prior", "now", "expected"),
     [
-        (PriorDiagnosis(steps=[OTHER, MISSING], main_gap="recognition"), [OTHER, RIGHT], True),
-        (PriorDiagnosis(steps=[WRONG], main_gap="concept"), [RIGHT, Step(role="compute", status="missing")], True),
-        (PriorDiagnosis(steps=[MISSING], main_gap="recognition"), [MISSING], False),
-        (PriorDiagnosis(steps=[MISSING], main_gap=None), [RIGHT], False),
-        (None, [RIGHT], False),
+        (STALLED, reading(OTHER, RIGHT, gap=None), True),
+        (PriorDiagnosis(steps=[WRONG], main_gap="concept"),
+         reading(RIGHT, Step(role="compute", status="missing"), gap="procedure"), True),
+        (STALLED, reading(OTHER, MISSING, gap="recognition"), False),
+        (PriorDiagnosis(steps=[MISSING], main_gap=None), reading(RIGHT, gap=None), False),
+        (None, reading(RIGHT, gap=None), False),
     ],
     ids=["missing->correct", "wrong->correct", "still-missing", "no-prior-gap", "no-prior"],
 )
 def test_repair_compares_the_gap_step(prior, now, expected):
     assert repaired(prior, now) is expected
+
+
+def test_genuine_repair_names_the_new_evidence():
+    check = assess_repair(STALLED, reading(OTHER, RIGHT, gap=None))
+    assert check.repaired and "v^2 = u^2 - 2gh" in check.reason
+
+
+def test_model_labels_the_gap_step_correct_but_still_finds_the_same_gap():
+    mislabelled = Step(role="choose_method", status="correct", quote="At the top the speed is 0")
+    check = assess_repair(STALLED, reading(OTHER, mislabelled, gap="recognition"))
+    assert not check.repaired and check.reason.startswith("conflict")
+
+
+def test_correct_label_on_last_turns_evidence_is_not_repair():
+    prior = PriorDiagnosis(steps=[OTHER, Step(role="choose_method", status="wrong", quote="2.04 s")],
+                           main_gap="recognition")
+    relabelled = Step(role="choose_method", status="correct", quote="2.04 s")
+    check = assess_repair(prior, reading(relabelled, gap=None))
+    assert not check.repaired and "already gave" in check.reason
+
+
+def test_correct_label_on_not_knowing_is_not_repair():
+    unsure = Step(role="choose_method", status="correct", quote="I'm not sure which equation")
+    assert not repaired(STALLED, reading(OTHER, unsure, gap=None))
+
+
+def test_a_different_step_demonstrated_is_not_repair():
+    quantities_now = Step(role="identify_quantities", status="correct", quote="u = 20, v = 0")
+    check = assess_repair(STALLED, reading(quantities_now, OTHER, MISSING, gap="recognition"))
+    assert not check.repaired and "choose_method is still missing" in check.reason
+
+
+def test_partial_improvement_is_not_repair():
+    check = assess_repair(STALLED, reading(OTHER, RIGHT, gap="procedure", dims=[("recognition", "fragile")]))
+    assert not check.repaired and check.reason.startswith("partial")
 
 
 def test_gap_step_follows_the_kind_of_gap():
@@ -146,7 +191,7 @@ def test_an_unlisted_gap_step_counts_as_missing():
 def test_listing_quantities_does_not_repair_a_recognition_gap():
     prior = PriorDiagnosis(steps=[Step(role="identify_quantities", status="missing"), OTHER, MISSING],
                            main_gap="recognition")
-    now = [Step(role="identify_quantities", status="correct", quote="u = 20"), OTHER, MISSING]
+    now = reading(Step(role="identify_quantities", status="correct", quote="u = 20"), OTHER, MISSING, gap="recognition")
     assert not repaired(prior, now)
 
 
@@ -336,3 +381,62 @@ def test_a_greek_student_is_taught_in_greek(store):
     _, result = run(store, model, request=teach_request("Βρήκα τον χρόνο, περίπου 2.04 s, αλλά όχι το ύψος."))
     assert model.teaching_inputs[0]["language"] == "Greek"
     assert result.output.reply == "Τι ξέρεις για την ταχύτητα στην κορυφή;"
+
+
+# ---- method adherence (case 08): the verifier gets the contract, rejection reruns teaching only ----
+
+DRIFT = {"mode": "reply_check", "approved": False, "reason": "method_drift",
+         "note": "The method needs the student to lay out knowns and the unknown; this is a plain question."}
+OFF_TARGET = {"mode": "reply_check", "approved": False, "reason": "off_target",
+              "note": "Aim at connecting her time to the height, not at the topic in general."}
+
+
+def test_verifier_receives_gap_method_definition_and_language(store):
+    verifier = FakeVerifier()
+    run(store, ScriptedModel([STALL]), verifier)
+    sent = verifier.inputs[0]
+    assert sent["main_gap"] == "recognition"
+    assert sent["gap_step"].startswith("choose_method (missing)")
+    assert "lay the situation out in parts" in sent["method_definition"]
+    assert sent["language"] == "English"
+
+
+@pytest.mark.parametrize("rejection", [DRIFT, OFF_TARGET], ids=["method_drift", "off_target"])
+def test_drift_or_off_target_regenerates_teaching_with_the_reason(store, rejection):
+    model = ScriptedModel([STALL], replies=["What do you think comes next?", "List what you know at launch and at the top."])
+    tutor, result = run(store, model, FakeVerifier(rejection, APPROVE))
+    assert model.reasoning_calls == 1 and len(model.teaching_inputs) == 2
+    assert model.teaching_inputs[1]["retry_reason"] == rejection["reason"]
+    assert model.teaching_inputs[1]["retry_note"] == rejection["note"]
+    assert result.output.reply == "List what you know at launch and at the top."
+
+
+def test_persistent_drift_ends_in_the_fallback(store):
+    model = ScriptedModel([STALL], replies=["What do you think comes next?"])
+    tutor, result = run(store, model, FakeVerifier(DRIFT))
+    assert [d.check.reason for d in tutor.last_trace.drafts] == ["method_drift"] * (1 + MAX_REGENERATIONS)
+    assert result.output.reply == FALLBACK_REPLY["English"] and not result.reply_check.approved
+
+
+def test_a_probe_has_no_method_contract(store):
+    verifier = FakeVerifier()
+    run(store, ScriptedModel([NOTHING], replies=["Where would you start?"]), verifier, request=teach_request("I don't know."))
+    assert verifier.inputs[0]["method"] is None and verifier.inputs[0]["method_definition"] is None
+
+
+def test_missing_steps_with_real_reasoning_keep_the_gap(store):
+    # Every step missing, but one carries the student's actual reasoning: still a diagnosis, not a probe.
+    reasoning_on_a_missing_step = diagnosis(
+        ("choose_method", "missing", "I found the time to the top, about 2.04 s, but I don't know how to get the height"),
+        ("compute", "missing", None),
+        gap="recognition",
+    )
+    tutor, result = run(store, ScriptedModel([reasoning_on_a_missing_step]))
+    assert result.output.evidence == "sufficient" and result.output.main_gap == "recognition"
+    assert tutor.last_trace.mode == "teach"
+
+
+def test_only_not_knowing_is_still_insufficient(store):
+    only_unsure = diagnosis(("choose_method", "missing", "I still don't know"), gap="recognition", confidence="high")
+    tutor, result = run(store, ScriptedModel([only_unsure]), request=teach_request("I still don't know."))
+    assert result.output.evidence == "insufficient" and tutor.last_trace.mode == "probe"

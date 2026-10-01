@@ -23,7 +23,7 @@ from app.verification.agent import check_reply
 from app.verification.schema import ReplyCheckInput, ReplyCheckResult, StudentCheckResult
 
 from .reasoning import diagnose
-from .repair import gap_step, repaired
+from .repair import assess_repair, gap_step
 from .schema import (
     ChooseStrategyResult,
     ReasoningInput,
@@ -35,6 +35,7 @@ from .schema import (
 )
 from .strategy import choose_strategy
 from .language import ACKNOWLEDGE_REPLY, FALLBACK_REPLY, student_language, written_in
+from .methods import METHOD_DEFINITIONS
 from .teaching import write_reply
 
 MAX_REGENERATIONS = 2
@@ -63,6 +64,7 @@ class TeachTrace(BaseModel):
     gap_step: Step | None = None
     strategy: ChooseStrategyResult | None = None
     gap_repaired: bool
+    repair_reason: str = ""
     drafts: list[Draft] = []
     fallback: bool = False
 
@@ -74,6 +76,14 @@ def final_answers(solution: Solution) -> list[str]:
     if number and number.group(1) != solution.result.strip():
         answers.append(number.group(1))
     return answers
+
+
+def _describe(step: Step | None) -> str | None:
+    """The gap step as the verifier reads it: the role, and the student's words if any."""
+    if step is None:
+        return None
+    words = f': "{step.quote}"' if step.quote else " (the student did not write this step)"
+    return f"{step.role} ({step.status}){words}"
 
 
 def choose_mode(diagnosis: TutorDiagnosis, prior_gap: str | None, is_repaired: bool) -> Mode:
@@ -124,7 +134,8 @@ class AgentTutor:
         diagnosis = reasoned.value
         prior = request.prior
         prior_gap = prior.main_gap if prior else None
-        is_repaired = repaired(prior, diagnosis.steps)
+        repair = assess_repair(prior, diagnosis)
+        is_repaired = repair.repaired
         mode = choose_mode(diagnosis, prior_gap, is_repaired)
 
         # No new evidence, but a gap is still being taught: keep teaching that gap.
@@ -145,6 +156,7 @@ class AgentTutor:
             gap_step=step,
             strategy=strategy,
             gap_repaired=is_repaired,
+            repair_reason=repair.reason,
         )
         self.last_trace = trace
 
@@ -173,6 +185,7 @@ class AgentTutor:
             diagnosis=diagnosis,
             gap_step=step,
             strategy=strategy,
+            method_definition=METHOD_DEFINITIONS[strategy.method] if strategy else None,
             hints_used=request.hints_used,
             solution_steps=request.solution.steps,
             language=student_language(request.student_text),
@@ -200,6 +213,10 @@ class AgentTutor:
                     method=strategy.method if strategy else None,
                     hints_used=request.hints_used,
                     hidden_solution=" ".join(request.solution.steps),
+                    main_gap=diagnosis.main_gap,
+                    gap_step=_describe(step),
+                    method_definition=METHOD_DEFINITIONS[strategy.method] if strategy else None,
+                    language=teaching_input.language,
                 ),
                 self._verifier_model,
                 final_answers(request.solution),

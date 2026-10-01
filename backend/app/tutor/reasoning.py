@@ -13,6 +13,7 @@ from pydantic_ai.models import Model
 from app.ai_gateway import gateway
 from app.ai_gateway.schema import GatewayFallback, GatewayOk
 
+from .evidence import NOT_KNOWING, normalise as _normalise, substantive
 from .repair import GAP_STEPS
 from .schema import ReasoningInput, Step, TutorDiagnosis
 
@@ -29,21 +30,14 @@ reasoning_agent = Agent(
 )
 
 
-def _normalise(text: str) -> str:
-    text = text.lower().replace("’", "'").replace("“", '"').replace("”", '"')
-    return re.sub(r"\s+", " ", text).strip(" .,;:!?\"'")
-
-
-# Saying you do not know how to do a step is missing evidence, not a wrong step (English only for now).
-NOT_KNOWING = re.compile(r"\b(i )?(do not|don't|dont) know\b|\bnot sure\b|\bno idea\b|\bi'?m stuck\b|\bcan'?t (figure|work) out\b", re.I)
-
-
 def apply_rules(diagnosis: TutorDiagnosis, attempt: str, check_gap_step: bool = True) -> TutorDiagnosis:
     """Deterministic rules on top of the model's reading.
 
     - No quote, no claim (rule 7): a step whose quote is not in the attempt becomes missing.
     - A "wrong" step whose quote only says the student does not know is missing.
-    - Every step missing: there is no evidence to diagnose (insufficient, low, no gap).
+    - Every step missing and nothing to go on (no gap found, or no quote beyond "I don't know"):
+      there is no evidence to diagnose (insufficient, low, no gap). A missing step that carries
+      the student's real reasoning is still evidence, so the model's gap is kept.
     - Every step correct: no demonstrated gap.
     """
     text = _normalise(attempt)
@@ -56,7 +50,8 @@ def apply_rules(diagnosis: TutorDiagnosis, attempt: str, check_gap_step: bool = 
         for s in steps
     ]
     update: dict = {"steps": steps}
-    if all(s.status == "missing" for s in steps):
+    no_evidence = diagnosis.main_gap is None or not any(substantive(s.quote) for s in steps)
+    if all(s.status == "missing" for s in steps) and no_evidence:
         update |= {"evidence": "insufficient", "confidence": "low", "main_gap": None, "alternatives": []}
     elif all(s.status == "correct" for s in steps):
         update |= {"main_gap": None, "alternatives": []}

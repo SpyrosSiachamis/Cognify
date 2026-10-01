@@ -71,6 +71,7 @@ RejectionReason = Literal[
     "answer_leak",
     "heavy_hint",
     "method_drift",
+    "off_target",
     "shaming_tone",
     "invalid_followup",
     "not_independent",
