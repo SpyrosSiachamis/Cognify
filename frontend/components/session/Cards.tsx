@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { lookAt, popAt } from "@/lib/fx";
-import type { Rich, Widget } from "@/lib/tutor/types";
-import { useApp } from "../AppProvider";
+import type { ApiError, Solution } from "@/lib/api";
+import { lookAt } from "@/lib/fx";
+import type { Widget } from "@/lib/tutor/types";
 import { Icon } from "../Icons";
-import { RichText } from "../RichText";
-import { RectDiagram } from "./RectDiagram";
-
-type Feedback = { tone: "good" | "nudge"; text: string } | undefined;
 
 // Scroll the new card into view and put the cursor in its field once it has settled.
 function useEntry<T extends HTMLElement>(focusDelay: number) {
@@ -35,10 +31,14 @@ export function ProblemCard({ text }: { text: string }) {
   );
 }
 
-export function IdeaCard({ widget, onSubmit }: { widget: Extract<Widget, { kind: "idea" }>; onSubmit: (text: string) => void }) {
-  const { card, field } = useEntry<HTMLTextAreaElement>(400);
+/** A text box for the student's answer. Once sent it stays visible but locked (the request is in flight or done). */
+function AnswerBox({ placeholder, label, done, onSubmit, focusDelay }: { placeholder: string; label: string; done: boolean; onSubmit: (text: string) => void; focusDelay: number }) {
+  const { field } = useEntry<HTMLTextAreaElement>(focusDelay);
   const [value, setValue] = useState("");
-  const send = () => onSubmit(value.trim() || widget.demo);
+  const send = () => {
+    if (done || !value.trim()) return; // nothing to send; a sent answer cannot be sent twice
+    onSubmit(value.trim());
+  };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -46,236 +46,117 @@ export function IdeaCard({ widget, onSubmit }: { widget: Extract<Widget, { kind:
     }
   };
   return (
-    <div className="icard" ref={card}>
-      <div className="paper stack">
-        <textarea ref={field} className="field serif" rows={3} placeholder={widget.placeholder} aria-label="Your first idea" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={onKey} />
-        <div className="spread">
-          <button type="button" className="try" onClick={() => { setValue(widget.demo); field.current?.focus(); }}>
-            <Icon id="i-spark" />
-            Use the demo answer
-          </button>
-          <button className="btn btn-main" type="button" onClick={send}>
-            Send <Icon id="i-arrow" className="arr" />
-          </button>
-        </div>
+    <>
+      <textarea ref={field} className="field serif" rows={3} maxLength={2000} placeholder={placeholder} aria-label={label} value={value} disabled={done} onChange={(e) => setValue(e.target.value)} onKeyDown={onKey} />
+      <div className="spread">
+        <span className="muted" style={{ fontSize: 13 }}>Enter to send · Shift+Enter for a new line</span>
+        <button className="btn btn-main" type="button" onClick={send} disabled={done || !value.trim()}>
+          Send <Icon id="i-arrow" className="arr" />
+        </button>
       </div>
-    </div>
+    </>
   );
 }
 
-export function ProbeCard({ widget, done, onSubmit }: { widget: Extract<Widget, { kind: "probe" }>; done: boolean; onSubmit: (text: string) => void }) {
-  const { card, field } = useEntry<HTMLInputElement>(400);
-  const [value, setValue] = useState("");
-  const go = (text?: string) => onSubmit((text ?? value).trim() || widget.demo);
-  return (
-    <div className="icard" ref={card}>
-      <div className={`paper stack${done ? " card-done" : ""}`}>
-        <span className="kicker">{widget.kicker}</span>
-        <p className="q">
-          <RichText value={widget.prompt} />
-        </p>
-        <div className="inrow">
-          <input
-            ref={field}
-            className="field mono"
-            placeholder={widget.placeholder}
-            aria-label={widget.ariaLabel}
-            autoComplete="off"
-            value={value}
-            disabled={done}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && go()}
-          />
-          <button className="btn btn-main" type="button" onClick={() => go()}>Check</button>
-        </div>
-        <div className="row">
-          <button type="button" className="try" onClick={() => { setValue(widget.demo); go(widget.demo); }}>
-            <Icon id="i-spark" />
-            Use demo answer
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function QuestionCard({
-  widget,
-  done,
-  feedback,
-  onSubmit,
-}: {
-  widget: Extract<Widget, { kind: "question" }>;
-  done: boolean;
-  feedback: Feedback;
-  onSubmit: (text: string) => void;
-}) {
-  const { state, dispatch } = useApp();
-  const { card, field } = useEntry<HTMLInputElement>(400);
-  const fb = useRef<HTMLDivElement>(null);
-  const [value, setValue] = useState("");
-  const [hintShown, setHintShown] = useState(false);
-
-  // A small celebration the moment the answer is accepted.
-  useEffect(() => {
-    if (done) popAt(fb.current);
-  }, [done]);
-
-  const askHint = () => {
-    if (hintShown) return;
-    setHintShown(true);
-    dispatch({ type: "hint" });
-    dispatch({ type: "log", b: "Asked for a hint", s: `Hint ${state.hints + 1}`, now: Date.now() });
-  };
-  const stage = (done ? widget.stage + 1 : widget.stage) as 0 | 1 | 2;
-  return (
-    <div className="icard" ref={card}>
-      <div className={`paper${done ? " card-done" : ""}`}>
-        <div className="qgrid">
-          <div className="stack">
-            <span className="kicker">{widget.kicker}</span>
-            <p className="q">
-              <RichText value={widget.prompt} />
-            </p>
-            <div className="inrow">
-              <input
-                ref={field}
-                className="field mono"
-                placeholder={widget.placeholder}
-                aria-label={widget.ariaLabel}
-                autoComplete="off"
-                value={value}
-                disabled={done}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onSubmit(value)}
-              />
-              <button className="btn btn-main" type="button" onClick={() => onSubmit(value)}>Check</button>
-            </div>
-            <div className={`fb${feedback ? " " + feedback.tone : ""}`} aria-live="polite" ref={fb}>
-              {feedback?.text}
-            </div>
-            <div className={`hint${hintShown ? " show" : ""}`}>
-              <RichText value={widget.hint} />
-            </div>
-            <div className="row">
-              <button type="button" className="try" onClick={askHint}>
-                <Icon id="i-bulb" />
-                Need a hint
-              </button>
-              <button type="button" className="try" onClick={() => { setValue(widget.demo); onSubmit(widget.demo); }}>
-                <Icon id="i-spark" />
-                Use demo answer
-              </button>
-            </div>
-          </div>
-          <RectDiagram stage={stage} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function BuiltCard({ equation, summary }: { equation: string; summary: Rich }) {
+export function ReplyCard({ widget, done, onSubmit }: { widget: Extract<Widget, { kind: "reply" }>; done: boolean; onSubmit: (text: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    lookAt(ref.current, "start");
-    popAt(ref.current);
-  }, []);
+  useEffect(() => lookAt(ref.current, "start"), []);
+  if (done) return null; // the sent text now shows as the student's message
   return (
     <div className="icard" ref={ref}>
       <div className="paper stack">
-        <span className="kicker">You built it</span>
-        <div>
-          <span className="mathbox">{equation}</span>
-        </div>
-        <p className="muted" style={{ margin: 0, fontFamily: "var(--f-voice)", fontSize: 18 }}>
-          <RichText value={summary} />
-        </p>
+        <span className="kicker">{widget.kicker}</span>
+        <AnswerBox placeholder={widget.placeholder} label={widget.kicker} done={done} onSubmit={onSubmit} focusDelay={400} />
       </div>
     </div>
   );
 }
 
-export function ReadyCard({ widget, onSubmit }: { widget: Extract<Widget, { kind: "ready" }>; onSubmit: () => void }) {
+export function StressCard({ widget, done, onSubmit }: { widget: Extract<Widget, { kind: "stress" }>; done: boolean; onSubmit: (text: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => lookAt(ref.current, "start"), []);
   return (
     <div className="icard" ref={ref}>
-      <div className="paper">
-        <button className="btn btn-main btn-wide" type="button" onClick={onSubmit}>
-          {widget.label} <Icon id="i-arrow" className="arr" />
-        </button>
+      <div className={`paper stark stack${done ? " card-done" : ""}`}>
+        <span className="kicker">{widget.kicker}</span>
+        <p className="fresh">{widget.problem}</p>
+        {!done && <AnswerBox placeholder={widget.placeholder} label="Your solution" done={done} onSubmit={onSubmit} focusDelay={700} />}
+        <span className="locked-help">
+          <Icon id="i-lock" />
+          Hints are off
+        </span>
       </div>
     </div>
   );
 }
 
-export function TransferCard({
-  widget,
-  misses,
-  onSubmit,
-}: {
-  widget: Extract<Widget, { kind: "transfer" }>;
-  misses: number;
-  onSubmit: (equation: string, answer: string) => void;
-}) {
-  const { card, field } = useEntry<HTMLInputElement>(700);
-  const paper = useRef<HTMLDivElement>(null);
-  const [equation, setEquation] = useState("");
-  const [answer, setAnswer] = useState("");
-
-  // Shake the card each time the answer is not right yet.
-  useEffect(() => {
-    const el = paper.current;
-    if (!el || misses === 0) return;
-    el.classList.remove("shake");
-    void el.offsetWidth;
-    el.classList.add("shake");
-  }, [misses]);
-
+export function ErrorCard({ error, onRetry }: { error: ApiError; onRetry?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => lookAt(ref.current, "start"), []);
   return (
-    <div className="icard" ref={card}>
-      <div className="paper stark stack" ref={paper}>
-        <span className="kicker">{widget.kicker}</span>
-        <p className="fresh">
-          <RichText value={widget.problem} />
-        </p>
-        <div className="stress-grid">
-          <label>
-            Your equation
-            <input ref={field} className="field mono" placeholder="write the model" aria-label="Your equation" autoComplete="off" value={equation} onChange={(e) => setEquation(e.target.value)} />
-          </label>
-          <label>
-            Smaller number
-            <input
-              className="field mono"
-              inputMode="numeric"
-              placeholder="?"
-              aria-label="Your answer"
-              autoComplete="off"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onSubmit(equation, answer)}
-            />
-          </label>
+    <div className="icard" ref={ref} role="alert">
+      <div className="paper stack">
+        <div className="notyet show">
+          <b>Cognify could not answer.</b> {error.message}
+          {error.status ? ` (${error.code}, ${error.status})` : ` (${error.code})`}
         </div>
-        <div className={`notyet${misses > 0 ? " show" : ""}`}>
-          <RichText value={widget.notYet} />
-        </div>
-        <div className="spread">
-          <span className="locked-help">
-            <Icon id="i-lock" />
-            Hints are off
-          </span>
+        {onRetry ? (
           <div className="row">
-            <button type="button" className="try" onClick={() => { setEquation(widget.demoEquation); setAnswer(widget.demoAnswer); }}>
-              <Icon id="i-spark" />
-              Use demo answer
-            </button>
-            <button className="btn btn-main" type="button" onClick={() => onSubmit(equation, answer)}>
-              Submit <Icon id="i-arrow" className="arr" />
+            <button className="btn btn-main" type="button" onClick={onRetry}>
+              Try again <Icon id="i-arrow" className="arr" />
             </button>
           </div>
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>This cannot be retried. Start a new problem to continue.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function SolutionCard({ solution }: { solution: Solution }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => lookAt(ref.current, "start"), []);
+  return (
+    <div className="icard" ref={ref}>
+      <div className="paper stack">
+        <span className="kicker">The solution</span>
+        <div className="result">
+          <span className="ic">
+            <Icon id="i-chart" />
+          </span>
+          <span>{solution.result}</span>
+        </div>
+        <ol className="steps">
+          {solution.steps.map((step, i) => (
+            <li key={i}>
+              <span className="sn">{i + 1}</span>
+              <p>{step}</p>
+            </li>
+          ))}
+        </ol>
+        <div className="note">
+          <Icon id="i-info" />
+          <span>You left the session, so nothing from it counts as evidence of what you understand.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function EndedCard({ widget, onNewProblem }: { widget: Extract<Widget, { kind: "ended" }>; onNewProblem: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => lookAt(ref.current, "start"), []);
+  // The backend has closed this session (a second NOT YET), so there is nothing more to send to it.
+  return (
+    <div className="icard" ref={ref}>
+      <div className="paper stack">
+        <span className="kicker">Session over · not yet</span>
+        <p style={{ margin: 0 }}>{widget.message}</p>
+        <div className="row">
+          <button className="btn btn-main" type="button" onClick={onNewProblem}>
+            Start a new problem <Icon id="i-arrow" className="arr" />
+          </button>
         </div>
       </div>
     </div>

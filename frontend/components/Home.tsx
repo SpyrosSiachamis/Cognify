@@ -1,37 +1,25 @@
 "use client";
 
-import { useRef, type KeyboardEvent } from "react";
-import { DEMO_PROBLEM, type Mode } from "@/lib/state";
+import { useRef } from "react";
+import { EXAMPLE_PROBLEM } from "@/lib/state";
 import { useApp } from "./AppProvider";
 import { Icon } from "./Icons";
 import { Shelf } from "./Shelf";
 
-const LEVELS: { id: Mode; level: string; name: string; icon: "i-bolt" | "i-mountain"; line: string; points: string[] }[] = [
-  { id: "simple", level: "Level I · about a minute", name: "Simple", icon: "i-bolt", line: "A clear answer, fast.", points: ["Step-by-step solution", "The key idea, in brief", "Not counted as progress"] },
-  { id: "master", level: "Level II · about five minutes", name: "Master", icon: "i-mountain", line: "Learn it, then prove it.", points: ["Finds where you get stuck", "You build it, with small hints", "Tested on a fresh problem"] },
-];
-
-export function Home({ onStart }: { onStart: () => void }) {
+export function Home({ onStart, onRetryViews }: { onStart: () => void; onRetryViews: () => void }) {
   const { state, dispatch } = useApp();
   const field = useRef<HTMLTextAreaElement>(null);
-  const cards = useRef<Record<Mode, HTMLButtonElement | null>>({ simple: null, master: null });
-
-  const pick = (mode: Mode) => dispatch({ type: "mode", mode });
-  const onKeys = (e: KeyboardEvent) => {
-    if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) return;
-    e.preventDefault();
-    const next: Mode = state.mode === "master" ? "simple" : "master";
-    pick(next);
-    cards.current[next]?.focus();
-  };
+  const views = state.views;
+  const name = views.status === "ok" ? views.data.learner.display_name : null;
+  const ready = state.problem.trim().length > 0;
 
   return (
     <section className="view">
-      <p className="eyebrow">Welcome back, Maria</p>
+      <p className="eyebrow">{name ? `Welcome back, ${name}` : "Welcome back"}</p>
       <h1>
         Solve it. Then <em>prove it.</em>
       </h1>
-      <p className="lede">Paste any problem. Cognify learns how you think, teaches the way that works for you, then checks you can do the next one alone.</p>
+      <p className="lede">Paste any problem. Cognify reads how you think, teaches the way that has worked for you, then checks you can do the next one alone.</p>
       <div className="paper ask">
         <div className="spread">
           <h3 aria-level={2}>What are you working on?</h3>
@@ -39,7 +27,7 @@ export function Home({ onStart }: { onStart: () => void }) {
             type="button"
             className="try"
             onClick={() => {
-              dispatch({ type: "problem", problem: DEMO_PROBLEM });
+              dispatch({ type: "problem", problem: EXAMPLE_PROBLEM });
               field.current?.focus();
             }}
           >
@@ -60,38 +48,47 @@ export function Home({ onStart }: { onStart: () => void }) {
           />
           <span className="count counter">{state.problem.length} / 2000</span>
         </div>
-        <div className="modes" role="radiogroup" aria-label="How deep" onKeyDown={onKeys}>
-          {LEVELS.map((l) => (
-            <button
-              key={l.id}
-              ref={(el) => {
-                cards.current[l.id] = el;
-              }}
-              type="button"
-              className="mode"
-              role="radio"
-              aria-checked={state.mode === l.id}
-              tabIndex={state.mode === l.id ? 0 : -1}
-              onClick={() => pick(l.id)}
-            >
-              <span className="lv">{l.level}</span>
-              <span className="top2">
-                <Icon id={l.icon} />
-                <span className="nm">{l.name}</span>
-              </span>
-              <span className="mc">{l.line}</span>
-              <ul>
-                {l.points.map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
-            </button>
-          ))}
+        <div className="modes" role="radiogroup" aria-label="How deep">
+          <button type="button" className="mode" role="radio" aria-checked={false} aria-disabled="true" tabIndex={-1} disabled>
+            <span className="lv">Level I · not available yet</span>
+            <span className="top2">
+              <Icon id="i-bolt" />
+              <span className="nm">Simple</span>
+            </span>
+            <span className="mc">A clear answer, fast.</span>
+            <ul>
+              <li>The backend does not serve Level I answers yet</li>
+            </ul>
+          </button>
+          <button type="button" className="mode" role="radio" aria-checked tabIndex={0}>
+            <span className="lv">Level II · Master</span>
+            <span className="top2">
+              <Icon id="i-mountain" />
+              <span className="nm">Master</span>
+            </span>
+            <span className="mc">Learn it, then prove it.</span>
+            <ul>
+              <li>Finds where you get stuck</li>
+              <li>You build it, with small hints</li>
+              <li>Tested on a fresh problem</li>
+            </ul>
+          </button>
         </div>
-        <button className="btn btn-main btn-wide" type="button" onClick={onStart}>
-          {state.mode === "master" ? "Start Master session" : "Show me the steps"} <Icon id="i-arrow" className="arr" />
+        <button className="btn btn-main btn-wide" type="button" onClick={onStart} disabled={!ready}>
+          Start Master session <Icon id="i-arrow" className="arr" />
         </button>
-        <p className="demo-note">The walkthrough runs on a prepared scenario. Live AI plugs in behind the same screens.</p>
+        <p className="demo-note">
+          {views.status === "ok" && "Connected to Cognify. Every reply comes from the live tutor."}
+          {views.status === "loading" && "Connecting to Cognify…"}
+          {views.status === "error" && (
+            <>
+              Cannot reach Cognify: {views.message}{" "}
+              <button type="button" className="link" onClick={onRetryViews}>
+                Try again
+              </button>
+            </>
+          )}
+        </p>
       </div>
       <Shelf />
     </section>

@@ -24,7 +24,7 @@ const CONTENT: Record<TabId, () => ReactNode> = {
 };
 
 /* The right-hand sheet where all the analysis lives. ESC closes it and Tab stays inside it. */
-export function ProgressDrawer({ onReset }: { onReset: () => void }) {
+export function ProgressDrawer({ onRefresh }: { onRefresh: () => void }) {
   const { state, dispatch } = useApp();
   const open = state.sheetOpen;
   const sheet = useRef<HTMLDivElement>(null);
@@ -70,7 +70,7 @@ export function ProgressDrawer({ onReset }: { onReset: () => void }) {
   return (
     <>
       <div className={`scrim${open ? " show" : ""}`} onClick={closeSheet} />
-      <div className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={state.backend ? "backend" : "seeded"}>
+      <div className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={state.views.status}>
         <div className="sheet-head">
           <div>
             <h2>
@@ -93,10 +93,10 @@ export function ProgressDrawer({ onReset }: { onReset: () => void }) {
           {CONTENT[state.tab]()}
         </div>
         <div className="sheet-foot">
-          <span>Demo history is labelled “seeded”. Today’s session is live.</span>
-          <button className="btn-ghost" type="button" onClick={onReset}>
+          <span>{state.views.status === "ok" && state.views.data.learner.is_seeded ? "Includes seeded demo history (labelled “seeded”). This session is live." : "Everything here comes from the Cognify backend."}</span>
+          <button className="btn-ghost" type="button" onClick={onRefresh}>
             <Icon id="i-undo" style={{ verticalAlign: -2, marginRight: 6 }} />
-            Reset demo
+            Refresh
           </button>
         </div>
       </div>

@@ -22,7 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preload" href="/fonts/HankenGrotesk-normal-latin-605034.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/Newsreader-normal-latin-b76914.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </head>
-      <body>{children}</body>
+      {/* Browser extensions (e.g. Grammarly) add attributes to <body> before React hydrates. This only ignores
+          attribute differences on <body> itself, not on anything inside it. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

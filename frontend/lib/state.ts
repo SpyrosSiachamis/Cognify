@@ -1,35 +1,57 @@
-/* The whole app state in one place. A pure reducer, so it is easy to test and easy to explain. */
+/* The whole app state in one place. A pure reducer, so it is easy to test and easy to explain.
+   Everything about the learner and the session is a copy of what the backend returned; the backend stays
+   authoritative and nothing here is computed in its place. */
 
-import type { BackendData } from "./backend";
-import type { VerdictChanges } from "./api";
+import type { Views } from "./backend";
+import type { DiagnosisView, MethodView, Verdict } from "./api";
+import type { Phase } from "./vocab";
 
 export type Theme = "velvet" | "salon";
-export type View = "home" | "quick" | "session" | "result";
-export type Mode = "simple" | "master";
+export type View = "home" | "session" | "result";
 export type TabId = "overview" | "reasoning" | "understanding" | "teaching";
 export type LogKind = "" | "ok" | "ai";
 export type LogEntry = { t: number; b: string; s: string; k: LogKind };
 export type ToastState = { msg: string; label: string; tab: TabId } | null;
 
-export const DEMO_PROBLEM =
+// An example the student can load into the box ("Try an example"). It is input, never a response.
+export const EXAMPLE_PROBLEM =
   "A rectangle has an area of 48 m². Its length is 2 m greater than its width. Find its dimensions.";
-export const DEMO_THOUGHT = "I know the area is 48, so length times width is 48. But I don’t see a quadratic here.";
-// Seeded demo numbers shown in the top bar before anything is proven today.
-export const BASE = { streak: 4, proven: 3 };
+
+/** The learner views from the backend: still loading, loaded, or failed (with the reason). */
+export type ViewsState = { status: "loading" } | { status: "ok"; data: Views } | { status: "error"; message: string };
+
+/** The current Master session, as the backend reported it. */
+export type SessionState = {
+  phase: Phase | null;
+  hintsUsed: number;
+  firstIdea: string; // the student's first message, which the first diagnosis reads
+  diagnosis: DiagnosisView | null; // the latest diagnosis the backend returned
+  diagnosedText: string; // the student text that diagnosis is about
+  method: MethodView | null; // the latest teaching move
+  verdict: Verdict | null;
+  over: boolean;
+};
+
+export const emptySession: SessionState = {
+  phase: null,
+  hintsUsed: 0,
+  firstIdea: "",
+  diagnosis: null,
+  diagnosedText: "",
+  method: null,
+  verdict: null,
+  over: false,
+};
 
 export type AppState = {
   theme: Theme;
   view: View;
-  mode: Mode;
   problem: string;
   dim: boolean; // room dims during the fresh problem
   fresh: boolean; // something new in Progress
-  verified: boolean; // transfer verified in this session
-  bumped: boolean; // streak and proven chips already counted today's win
-  shared: boolean; // student shared a first idea
-  probed: boolean; // warm-up done
-  thought: string;
-  hints: number;
+  views: ViewsState;
+  session: SessionState;
+  lastText: string; // the student's latest message (the one the next backend reply is about)
   log: LogEntry[];
   t0: number;
   run: number; // bumped for every new session so old async work stops
@@ -39,59 +61,51 @@ export type AppState = {
   mapSel: string;
   sealOpen: boolean;
   toast: ToastState;
-  backend: BackendData | null; // what the backend knows about the learner; null = use the seeded history
-  verdict: VerdictChanges | null; // the backend's before/after when it verified the fresh problem
 };
 
 export const initialState: AppState = {
   theme: "velvet",
   view: "home",
-  mode: "master",
-  problem: DEMO_PROBLEM,
+  problem: "",
   dim: false,
   fresh: false,
-  verified: false,
-  bumped: false,
-  shared: false,
-  probed: false,
-  thought: "",
-  hints: 0,
+  views: { status: "loading" },
+  session: emptySession,
+  lastText: "",
   log: [],
   t0: 0,
   run: 0,
   sheetOpen: false,
   sheetRev: 0,
   tab: "overview",
-  mapSel: "qm",
+  mapSel: "",
   sealOpen: false,
   toast: null,
-  backend: null,
-  verdict: null,
 };
 
 export type Action =
   | { type: "theme"; theme: Theme }
   | { type: "view"; view: View }
-  | { type: "mode"; mode: Mode }
   | { type: "problem"; problem: string }
   | { type: "dim"; on: boolean }
   | { type: "fresh"; on: boolean }
   | { type: "log"; b: string; s?: string; k?: LogKind; now: number }
-  | { type: "hint" }
-  | { type: "shared"; thought: string }
-  | { type: "probed" }
-  | { type: "verified" }
-  | { type: "bump" }
+  | { type: "views"; views: ViewsState }
+  | { type: "sent"; text: string; first: boolean }
+  | { type: "phase"; phase: Phase }
+  | { type: "hints"; hints: number }
+  | { type: "diagnosis"; diagnosis: DiagnosisView }
+  | { type: "method"; method: MethodView }
+  | { type: "verdict"; verdict: Verdict; over: boolean }
   | { type: "sheet"; open: boolean; tab?: TabId }
   | { type: "tab"; tab: TabId }
   | { type: "mapSel"; id: string }
   | { type: "seal"; open: boolean }
   | { type: "toast"; toast: ToastState }
-  | { type: "backend"; data: BackendData | null }
-  | { type: "verdict"; changes: VerdictChanges }
   | { type: "startSession"; now: number }
-  | { type: "newProblem" }
-  | { type: "fullReset" };
+  | { type: "newProblem" };
+
+const patch = (s: AppState, session: Partial<SessionState>): AppState => ({ ...s, session: { ...s.session, ...session } });
 
 export function reducer(s: AppState, a: Action): AppState {
   switch (a.type) {
@@ -99,8 +113,6 @@ export function reducer(s: AppState, a: Action): AppState {
       return { ...s, theme: a.theme };
     case "view":
       return { ...s, view: a.view };
-    case "mode":
-      return { ...s, mode: a.mode };
     case "problem":
       return { ...s, problem: a.problem };
     case "dim":
@@ -111,16 +123,20 @@ export function reducer(s: AppState, a: Action): AppState {
       const t = Math.max(0, Math.round((a.now - s.t0) / 1000));
       return { ...s, log: [...s.log, { t, b: a.b, s: a.s ?? "", k: a.k ?? "" }] };
     }
-    case "hint":
-      return { ...s, hints: s.hints + 1 };
-    case "shared":
-      return { ...s, shared: true, thought: a.thought };
-    case "probed":
-      return { ...s, probed: true };
-    case "verified":
-      return { ...s, verified: true };
-    case "bump":
-      return { ...s, bumped: true };
+    case "views":
+      return { ...s, views: a.views };
+    case "sent":
+      return { ...(a.first ? patch(s, { firstIdea: a.text }) : s), lastText: a.text };
+    case "phase":
+      return patch(s, { phase: a.phase });
+    case "hints":
+      return patch(s, { hintsUsed: a.hints });
+    case "diagnosis":
+      return patch(s, { diagnosis: a.diagnosis, diagnosedText: s.lastText });
+    case "method":
+      return patch(s, { method: a.method });
+    case "verdict":
+      return patch(s, { verdict: a.verdict, over: a.over });
     case "sheet":
       // Opening the drawer clears the "something new" dot and the toast.
       return a.open
@@ -134,32 +150,9 @@ export function reducer(s: AppState, a: Action): AppState {
       return { ...s, sealOpen: a.open };
     case "toast":
       return { ...s, toast: a.toast };
-    case "backend":
-      return { ...s, backend: a.data };
-    case "verdict":
-      return { ...s, verdict: a.changes };
     case "startSession":
-      return {
-        ...s,
-        run: s.run + 1,
-        shared: false,
-        probed: false,
-        thought: "",
-        hints: 0,
-        log: [],
-        verdict: null,
-        t0: a.now,
-        dim: false,
-        view: "session",
-      };
+      return { ...s, run: s.run + 1, session: emptySession, lastText: "", log: [], t0: a.now, dim: false, view: "session" };
     case "newProblem":
-      return { ...s, run: s.run + 1, dim: false, sheetOpen: false, toast: null, problem: DEMO_PROBLEM, view: "home" };
-    case "fullReset":
-      return {
-        ...initialState,
-        theme: s.theme,
-        backend: s.backend,
-        run: s.run + 1,
-      };
+      return { ...s, run: s.run + 1, dim: false, sheetOpen: false, sealOpen: false, toast: null, problem: "", view: "home" };
   }
 }
