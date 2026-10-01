@@ -4,6 +4,7 @@ Every row has is_seeded=True. Dates are relative to "now" so the rule
 "a success older than about 30 days expires" behaves the same every day.
 """
 
+import random
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -42,6 +43,11 @@ class Seed(Record):
     concept_states: list[ConceptState]
 
 
+def _fixed_id(*parts: object) -> UUID:
+    """A repeatable UUID v4, so loading the seed twice never makes duplicate rows."""
+    return UUID(int=random.Random("-".join(map(str, parts))).getrandbits(128), version=4)
+
+
 def _outcome_rows(
     student_id: UUID,
     gap: GapType,
@@ -61,6 +67,7 @@ def _outcome_rows(
         days_ago = round(first_days - i * step)
         rows.append(
             Outcome(
+                id=_fixed_id(student_id, gap, method, i),
                 student_id=student_id,
                 session_id=None,
                 concept_id=KINEMATICS_ID,
