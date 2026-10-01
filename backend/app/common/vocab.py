@@ -73,6 +73,15 @@ RejectionReason = Literal[
     "not_independent",
 ]
 
+# How the session ended (docs/ARCHITECTURE.md: verified, not verified after the caps, or exited).
+SessionStatus = Literal["active", "verified", "not_verified", "exited"]
+
+# What a student message is, decided by the backend from session state (API_CONTRACT).
+AttemptKind = Literal["first_thought", "teaching_reply", "follow_up_attempt"]
+
+# Why a gateway call fell back (docs/ARCHITECTURE.md, caps and fallbacks).
+GatewayFailure = Literal["invalid_output", "timeout", "provider_error"]
+
 
 def values(vocab_type: object) -> tuple[str, ...]:
     """The allowed strings of a vocabulary type, e.g. for a SQL CHECK constraint."""
