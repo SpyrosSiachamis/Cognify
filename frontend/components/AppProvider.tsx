@@ -18,7 +18,8 @@ function paintTheme(theme: Theme) {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Pick up the saved theme (the inline script in layout.tsx already painted it).
+  // Pick up the saved theme. The inline script in layout.tsx already painted it on <html>,
+  // so here we only tell React which button is pressed.
   useEffect(() => {
     let saved: string | null = null;
     try {
@@ -36,7 +37,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     room.setTheme();
   }, []);
 
-  useEffect(() => paintTheme(state.theme), [state.theme]);
   useEffect(() => {
     document.body.classList.toggle("dim", state.dim);
   }, [state.dim]);

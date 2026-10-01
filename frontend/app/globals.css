@@ -1,5 +1,6 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "./fonts.css";
 
 /* Cognify styles, ported from docs/cognify-prototype.html. Tailwind's preflight is left out on purpose:
    the prototype brings its own resets and relies on normal browser defaults. */
@@ -22,10 +23,10 @@
   --mode-a:#53283e; --mode-b:#3a1520;
   --l-far:#c4ad86; --l-mid:#9a7a5c; --l-near:#6b4430; --l-tree:#3d2418; --l-peak:#a77a89; --l-peak2:#7d4d62; --l-snow:#f4eadb; --l-road:#563624; --l-sky:transparent;
   --n-far:#5a3550; --n-mid:#4a2640; --n-near:#512027; --n-tree:#2a0e14; --n-peak:#6d3a52; --n-peak2:#4a2740; --n-snow:#e9d9de; --n-road:#d5c4a1; --n-sky:#2a1320;
-  --f-display:var(--font-fraunces),"Iowan Old Style","Palatino Linotype",Georgia,serif;
-  --f-voice:var(--font-newsreader),"Iowan Old Style",Georgia,serif;
-  --f-ui:var(--font-hanken),"Segoe UI",system-ui,sans-serif;
-  --f-mono:var(--font-jetbrains),ui-monospace,Menlo,monospace;
+  --f-display:"Fraunces","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --f-voice:"Newsreader","Iowan Old Style",Georgia,serif;
+  --f-ui:"Hanken Grotesk","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   color-scheme:dark;
 }
 :root[data-theme="salon"]{
@@ -472,3 +473,6 @@ h3{font-family:var(--f-display);font-weight:560;font-size:21px;line-height:1.15;
 :focus-visible{outline:2px solid var(--accent-2)!important;outline-offset:3px;border-radius:8px}
 [hidden]{display:none!important}
 .thread>*{scroll-margin-top:96px;scroll-margin-bottom:70px}.icard{max-width:100%}.thread .paper{max-width:700px}.thread .prob-card .paper{max-width:700px}.tl{margin:0}.msg.tutor .bub b{font-weight:600}
+
+/* The prototype page has no doctype, so a textarea leaves no baseline gap under it. Keep that look. */
+.fieldwrap textarea{display:block}
