@@ -3,10 +3,11 @@
     docker compose exec backend python -m scripts.tutor_chat            # interactive, Maria, ball problem
     docker compose exec backend python -m scripts.tutor_chat --demo     # premade Maria story, no typing
     docker compose exec backend python -m scripts.tutor_chat --custom   # your own problem and solution
+    docker compose exec backend python -m scripts.tutor_chat --matrix   # matrix problem, opening attempt sent for you
     docker compose exec backend python -m scripts.tutor_chat --student nikos --force-experiment
 
 It runs SessionService (the real flow and history writes) with the real AgentTutor on a
-fresh seeded in-memory store. Follow-up and judging still come from the stub.
+fresh seeded in-memory store.
 Commands while chatting: /json shows the last turn's trace, /quit ends.
 """
 
@@ -21,7 +22,7 @@ from app.tutor.agent import AgentTutor
 from app.user.ports import ProblemSetup
 from app.user.service import SessionService
 
-from .scenarios import BALL_PROBLEM, MARIA_TURNS, STUDENTS
+from .scenarios import BALL_PROBLEM, MARIA_TURNS, MATRIX_ATTEMPT, MATRIX_PROBLEM, STUDENTS
 
 BOLD, DIM, RED, AMBER, GREEN, END = "\033[1m", "\033[2m", "\033[31m", "\033[33m", "\033[32m", "\033[0m"
 
@@ -97,6 +98,7 @@ async def main() -> None:
     parser.add_argument("--student", choices=sorted(STUDENTS), default="maria")
     parser.add_argument("--custom", action="store_true", help="type your own problem and its solution")
     parser.add_argument("--demo", action="store_true", help="play the premade Maria story")
+    parser.add_argument("--matrix", action="store_true", help="matrix problem; its opening attempt is sent for you")
     parser.add_argument("--force-experiment", action="store_true", help="make choose_strategy run an experiment")
     args = parser.parse_args()
 
@@ -108,7 +110,7 @@ async def main() -> None:
         steps = input("Worked solution in one line: ").strip()
         tutor = ChatTutor(store, Solution(result=result, steps=[steps or result]))
     else:
-        problem = BALL_PROBLEM
+        problem = MATRIX_PROBLEM if args.matrix else BALL_PROBLEM
         tutor = ChatTutor(store)
     service = SessionService(tutor, store)
     start = await service.start(SessionStartRequest(
@@ -118,13 +120,13 @@ async def main() -> None:
     print(f"{BOLD}Problem:{END} {problem}")
     print(f"{BOLD}Tutor:{END} {start.message}\n")
 
-    turns = iter(MARIA_TURNS) if args.demo else None
+    scripted = iter(MARIA_TURNS if args.demo else [MATRIX_ATTEMPT] if args.matrix else [])
     while True:
-        if turns is not None:
-            text = next(turns, None)
-            if text is None:
-                break
+        text = next(scripted, None)
+        if text is not None:
             print(f"{BOLD}You:{END} {text}")
+        elif args.demo:
+            break
         else:
             try:
                 text = input(f"{BOLD}You:{END} ").strip()

@@ -9,7 +9,12 @@ How to reason, in this order:
 
 1. Read the attempt as reasoning, not as an answer to mark. Split it into ordered steps using these roles: identify_quantities, choose_method, set_up, substitute, compute, interpret. Mark each step correct, wrong or missing. Include only steps the problem needs.
    - Judge each step on its own validity. Any valid route counts: never mark a step wrong because a different or shorter route exists.
-   - Give each step its own piece of the student's text. A correct intermediate result is its own correct step (usually compute), even when a later step that uses it is wrong; do not let one wrong step swallow the correct work before it.
+   - The three statuses mean different things; keep them apart:
+     correct: what the student wrote for the step is true and valid, even if it is only an intermediate result that still needs more work.
+     wrong: the student wrote something false: a false value or claim, an invalid operation, or a result presented as something it is not (for example as the final answer, or as a different quantity).
+     missing: a step the solution needs that the student has not done.
+   - Unfinished is not wrong. When the student's work is true so far and stops before the next operation the solution needs, the work done is correct and that next operation is missing. Check an intermediate result against what it is, not against the final answer.
+   - Give each step its own piece of the student's text. A correct intermediate result is its own correct step (usually compute), even when a later step that uses it is wrong or not done; do not let one wrong or missing step swallow the correct work before it. If one role is partly done (for example some of the computing is done correctly and the rest is not), list that role twice: the correct part with its quote, then the missing part.
    - Judge what the student shows, not what they did not narrate. A correct solution may be concise, worded differently, use a different valid method, or skip writing down steps it clearly did: none of that is a gap. In a correct solution, leave out steps the student did not write; do not list them as missing.
    - Mark a step missing only when the solution needs it and the student's work actually lacks it (their result is unfinished or does not follow without it).
    - A step is wrong only if the student wrote something false for it. Saying they do not know how to do a step ("I don't know how to get X") makes that step missing, not wrong.
@@ -20,7 +25,7 @@ How to reason, in this order:
    - actually_gives: what that computation or claim really represents or produces (for example "the area of the rectangle", "a denominator that is not a common one").
    - asked_for: what the problem needs at that point (for example "the perimeter (the distance around it)", "a common denominator").
    - mismatch: one sentence on the difference between actually_gives and asked_for.
-   Be exact about the quantity or idea; do not just say it is wrong. If no step is wrong, error is null.
+   Be exact about the quantity or idea; do not just say it is wrong. If no step is wrong, error is null. An error describes something false the student did; a step they have not done yet is missing and has no error.
 4. Rate the 3 to 5 most relevant of these dimensions: correctness, recognition, representation, concept, procedure, strategy_choice, self_correction, hint_dependency, transfer. Use strong, fragile, weak or untested. Every rating states its evidence from the attempt. Do not rate a dimension the attempt gives no evidence for.
 5. Decide the evidence:
    - evidence is "insufficient" when the attempt contains no substantive reasoning (for example "I don't know", "no idea", "help", or only a restatement of the problem). Then every step is missing, main_gap is null, confidence is low, and you rate no dimension weak. Do not guess a gap from nothing.
@@ -34,6 +39,7 @@ How to reason, in this order:
    - self_correction: produces an answer that is clearly unreasonable and does not notice or check it.
    - transfer: can do the familiar version but not when the surface changes.
    If every step is correct, there is no demonstrated gap: main_gap is null, no dimension is weak. Do not invent a gap because a tutor normally teaches.
+   Unfinished work is not a misconception. Choose concept, or rate concept weak, only when the student states or uses a wrong belief. When correct work stops before the next operation, the gap is at that next operation, and the correct work done is evidence of what the student can do: do not rate down a dimension that work demonstrates.
    Keep one or two alternatives that could also explain the evidence, each with a confidence label. The main gap must not also be an alternative.
 7. Set confidence to low, medium or high. Never a number or percentage. Do not overclaim: if the attempt is short or could be explained by two different gaps, confidence is low.
 

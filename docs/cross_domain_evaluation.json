@@ -1,0 +1,2160 @@
+{
+  "description": "A small, hand-designed cross-domain generalization evaluation of Cognify's reasoning and diagnosis behaviour: can the tutor tell what a student has actually shown from what is unfinished or wrong, across seven domains? It is not a measure of educational accuracy or effectiveness: 21 cases, one run each.",
+  "conditions": {
+    "model": "Mistral Large 3",
+    "model_id": "mistral.mistral-large-3-675b-instruct",
+    "runs_per_case": 1,
+    "reruns": "none, including failed cases",
+    "entry_point": "AgentTutor.set_up then AgentTutor.teach_with_trace (as in test_general_live.py)",
+    "tutor_code": "commit a2d2554 (backend/app unchanged for this run)",
+    "cases": "backend/tests/tutor/cross_domain_cases.py (expectations written before the run; only the problem and the student's text reach the tutor)",
+    "test": "backend/tests/tutor/test_cross_domain_live.py",
+    "execution": "one pytest process, cases in sequence, after the model-evaluation queue had cleared"
+  },
+  "pass_criteria": {
+    "incomplete": "a correct step quotes the shown work; no step wrong; no error stated; something still missing; a gap found that is not concept; the turn teaches",
+    "incorrect": "a step marked wrong quotes the false claim; an error stated; a gap found; the turn teaches",
+    "correct_answer_wrong_reasoning": "same as incorrect: the false reasoning is marked wrong although the answer is right",
+    "quote_matching": "the evidence quote must appear in the step's quote, ignoring case and spaces"
+  },
+  "failure_taxonomy": [
+    "Infrastructure/API",
+    "Timeout",
+    "Structured output",
+    "Diagnosis",
+    "Evidence grounding",
+    "Teaching-method drift",
+    "Verification",
+    "Assertion/test expectation",
+    "Other"
+  ],
+  "failure_category_rules": {
+    "Timeout": "the diagnosis call timed out (diagnosis_failure starts with timeout)",
+    "Structured output": "the diagnosis output failed validation after its retries (invalid_output)",
+    "Infrastructure/API": "provider error, or the test errored before writing a record",
+    "Evidence grounding": "only the quote check failed: the right status was given, but not on a step quoting the expected evidence",
+    "Diagnosis": "a status, error, gap or mode check failed"
+  },
+  "cases": [
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "math_incomplete_factoring",
+      "domain": "Mathematics",
+      "pattern": "incomplete",
+      "passed": true,
+      "checks": {
+        "credits_the_correct_work": true,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "correct",
+            "quote": "I factored it as (x - 2)(x - 3) = 0"
+          },
+          {
+            "role": "set_up",
+            "status": "correct",
+            "quote": "(x - 2)(x - 3) = 0"
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "correct",
+            "quote": "(x - 2)(x - 3) = 0"
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": "I'm not sure what that tells me about x."
+          }
+        ],
+        "main_gap": "representation",
+        "evidence": "sufficient",
+        "confidence": "medium",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student correctly identified the equation, chose factoring as a method, and performed the factoring accurately. However, they did not complete the interpretation step to find the values of x."
+          },
+          {
+            "name": "recognition",
+            "state": "strong",
+            "evidence": "The student correctly recognized that factoring is an appropriate method for solving the quadratic equation and successfully factored it."
+          },
+          {
+            "name": "concept",
+            "state": "fragile",
+            "evidence": "The student factored the equation correctly but seems unsure about how to interpret the factored form to find the solutions for x."
+          },
+          {
+            "name": "procedure",
+            "state": "strong",
+            "evidence": "The student accurately performed the procedural steps of factoring the quadratic equation."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "strong",
+            "evidence": "The student chose an efficient and valid method (factoring) for solving the given quadratic equation."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve correctly factored the equation as (x − 2)(x − 3) = 0. Let’s lay this out to see what it means:\n\n- If **A × B = 0**, what can we say about A or B?\n- Here, **A** is (x − 2) and **B** is (x − 3).\n\nCan you use this structure to find the values of x?",
+        "reply_approved": true,
+        "final_answer": "x = 2, 3"
+      },
+      "expected": {
+        "demonstrated": "correct factoring of the quadratic",
+        "missing": "using the zero-product property to get x = 2 or x = 3",
+        "error": null,
+        "expected_diagnosis": "factoring correct; the step from the factored form to the solutions is missing",
+        "expected_behaviour": "credits the factoring, no step wrong, teaches toward the next step"
+      },
+      "problem": "Solve x^2 - 5x + 6 = 0.",
+      "student_response": "I factored it as (x - 2)(x - 3) = 0, but I'm not sure what that tells me about x.",
+      "evidence_quote": "(x - 2)(x - 3)",
+      "latency_seconds": 18.3,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 18.4,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "math_incorrect_percent",
+      "domain": "Mathematics",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "wrong",
+            "quote": "15% means divide by 15"
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "wrong",
+            "quote": "80 / 15"
+          },
+          {
+            "role": "compute",
+            "status": "correct",
+            "quote": "80 / 15 = 5.33"
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "divided 80 by 15 because they interpreted 15% as 'divide by 15'",
+          "actually_gives": "the result of dividing 80 by 15, which is 5.33",
+          "asked_for": "15% of 80, which means multiplying 80 by 0.15 or 15/100",
+          "mismatch": "Dividing by 15 calculates a fifteenth of 80, not 15 percent of 80."
+        },
+        "dimensions": [
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misinterprets the percentage symbol (%) as an instruction to divide by the number, rather than understanding it as a ratio per 100."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student demonstrates a fundamental misunderstanding of what a percentage represents, treating it as a division operation instead of a scaled ratio."
+          },
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The final result (5.33) is incorrect due to the misinterpretation of the percentage concept."
+          },
+          {
+            "name": "procedure",
+            "state": "fragile",
+            "evidence": "The arithmetic computation (80 / 15 = 5.33) is performed correctly, but the procedure is based on an incorrect setup."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You said 15% means 'divide by 15.' Let’s test that idea: if 100% of 80 is 80, what would dividing by 100 give you instead?",
+        "reply_approved": true,
+        "final_answer": "12"
+      },
+      "expected": {
+        "demonstrated": "knows a percentage calls for an operation on 80",
+        "missing": "15% means 15/100, so 0.15 x 80 = 12",
+        "error": "reads 'percent' as dividing by the percentage number",
+        "expected_diagnosis": "wrong step: dividing by 15 instead of multiplying by 15/100",
+        "expected_behaviour": "marks the division wrong with a stated error"
+      },
+      "problem": "What is 15% of 80?",
+      "student_response": "15% means divide by 15, so 80 / 15 = 5.33.",
+      "evidence_quote": "80 / 15",
+      "latency_seconds": 13.6,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 13.7,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "math_right_answer_prime_rule",
+      "domain": "Mathematics",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "91"
+          },
+          {
+            "role": "set_up",
+            "status": "wrong",
+            "quote": "every number ending in 1 is divisible by 7"
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that every number ending in 1 is divisible by 7",
+          "actually_gives": "a false rule that does not hold for all numbers ending in 1 (e.g., 11, 31, and 41 are not divisible by 7)",
+          "asked_for": "a valid method to determine if 91 is prime, such as checking divisibility by prime numbers less than or equal to its square root",
+          "mismatch": "The student's rule is incorrect and does not reliably determine divisibility or primality."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's conclusion that 91 is not prime is correct, but the reasoning used to reach this conclusion is invalid."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student holds a misconception about divisibility rules, specifically that numbers ending in 1 are divisible by 7."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresents the properties of prime numbers by applying an incorrect divisibility rule."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "weak",
+            "evidence": "The student chose an invalid strategy (a false divisibility rule) instead of a valid method like checking divisibility by primes ≤ √91."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You noticed that 91 ends with a 1 and thought this might be a clue. But let’s test your rule: is 11 divisible by 7? What does that tell you about numbers ending in 1?",
+        "reply_approved": true,
+        "final_answer": "No, 91 is not a prime number."
+      },
+      "expected": {
+        "demonstrated": "the right conclusion (91 = 7 x 13 is not prime)",
+        "missing": "a valid reason: finding an actual factor of 91",
+        "error": "a false rule: numbers ending in 1 are not all divisible by 7 (11, 31 are not)",
+        "expected_diagnosis": "the conclusion is right but the stated rule is false",
+        "expected_behaviour": "does not accept the answer as understanding; marks the reasoning wrong"
+      },
+      "problem": "Is 91 a prime number? Explain.",
+      "student_response": "No, 91 is not prime because every number ending in 1 is divisible by 7.",
+      "evidence_quote": "ending in 1 is divisible by 7",
+      "latency_seconds": 10.3,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 10.3,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "physics_incomplete_energy",
+      "domain": "Physics",
+      "pattern": "incomplete",
+      "passed": true,
+      "checks": {
+        "credits_the_correct_work": true,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "correct",
+            "quote": "Energy is power times time"
+          },
+          {
+            "role": "set_up",
+            "status": "correct",
+            "quote": "5 minutes is 300 seconds"
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "procedure",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student correctly identifies the quantities (power and time) and the method (energy = power × time). They also correctly convert minutes to seconds."
+          },
+          {
+            "name": "recognition",
+            "state": "strong",
+            "evidence": "The student correctly recognizes the relationship between energy, power, and time, and the need to convert time to seconds."
+          },
+          {
+            "name": "representation",
+            "state": "strong",
+            "evidence": "The student correctly translates 5 minutes into 300 seconds, showing an understanding of unit conversion."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "The student stops before substituting the values into the formula or performing the calculation, so there is no evidence of procedural error or success."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "strong",
+            "evidence": "The student chooses the correct method (energy = power × time) and unit conversion, but does not complete the solution."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve got the right formula (energy = power × time) and the correct time in seconds (300 s). Let’s look at a similar example: if a 1000 W kettle runs for 2 seconds, how much energy does it use?\n\n- Step 1: E = 1000 W × 2 s = 2000 J.\nNow, can you use the same reasoning to finish your problem?",
+        "reply_approved": true,
+        "final_answer": "360000 J"
+      },
+      "expected": {
+        "demonstrated": "the relation E = P t and the conversion to 300 s",
+        "missing": "multiplying 1200 W by 300 s (360000 J)",
+        "error": null,
+        "expected_diagnosis": "relation and unit conversion correct; the final multiplication is missing",
+        "expected_behaviour": "credits the relation and the conversion, no step wrong"
+      },
+      "problem": "A 1200 W kettle runs for 5 minutes. How much energy does it use, in joules?",
+      "student_response": "Energy is power times time, and 5 minutes is 300 seconds, but I don't know how to finish.",
+      "evidence_quote": "300 seconds",
+      "latency_seconds": 6.5,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 6.5,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "physics_incorrect_falling",
+      "domain": "Physics",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "wrong",
+            "quote": "heavier objects fall faster"
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that heavier objects fall faster",
+          "actually_gives": "a belief that mass affects the acceleration of objects in free-fall in the absence of air resistance",
+          "asked_for": "an understanding that in the absence of air resistance, all objects accelerate at the same rate regardless of mass",
+          "mismatch": "The student applied a belief about falling objects that holds true on Earth (where air resistance affects lighter objects more) but does not apply on the Moon, where there is no air resistance."
+        },
+        "dimensions": [
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student believes that heavier objects fall faster, which is a misconception about free-fall acceleration in the absence of air resistance."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student did not recognize that the absence of air resistance on the Moon changes the dynamics of free-fall, leading them to apply an Earth-based intuition."
+          },
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's conclusion is incorrect because it is based on a misconception about how objects fall in the absence of air resistance."
+          },
+          {
+            "name": "transfer",
+            "state": "weak",
+            "evidence": "The student failed to transfer their knowledge of free-fall dynamics from Earth (where air resistance plays a role) to the Moon (where it does not)."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You said that heavier objects fall faster—does that hold true even when there’s no air to slow anything down, like on the Moon? What do you think happens to the feather in this case?",
+        "reply_approved": true,
+        "final_answer": "Both land at the same time."
+      },
+      "expected": {
+        "demonstrated": "an attempt to compare the two objects",
+        "missing": "without air resistance all objects fall with the same acceleration, so they land together",
+        "error": "believes heavier objects fall faster",
+        "expected_diagnosis": "a misconception about free fall",
+        "expected_behaviour": "marks the claim wrong and names the misconception"
+      },
+      "problem": "A feather and a hammer are dropped together on the Moon, where there is no air. Which lands first?",
+      "student_response": "The hammer lands first because heavier objects fall faster.",
+      "evidence_quote": "heavier objects fall faster",
+      "latency_seconds": 14.3,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 14.3,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "physics_right_answer_no_weight",
+      "domain": "Physics",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "correct",
+            "quote": "The net force is 0 N"
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "wrong",
+            "quote": "because the box has no weight while it sits on the table."
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed the box has no weight while it sits on the table",
+          "actually_gives": "a misconception that the box's weight disappears when it is on the table",
+          "asked_for": "an understanding that the box has weight (force due to gravity) acting downward, balanced by the normal force from the table",
+          "mismatch": "The student believes the box's weight vanishes when it is on the table, but the weight still exists and is balanced by the normal force, resulting in a net force of 0 N."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student arrives at the correct final answer (0 N) but does so based on a misconception about weight."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student incorrectly believes the box has no weight while resting on the table, revealing a misunderstanding of the concept of weight and forces in equilibrium."
+          },
+          {
+            "name": "representation",
+            "state": "untested",
+            "evidence": "The attempt does not involve translating between different representations (e.g., diagrams, symbols, or equations)."
+          },
+          {
+            "name": "recognition",
+            "state": "strong",
+            "evidence": "The student correctly recognizes that the net force on the box is 0 N, indicating an understanding of equilibrium in this context."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "No procedural steps (e.g., calculations or substitutions) are shown or required in the attempt."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "Let's slow down for a moment. Which step of your answer are you least sure about, and why?",
+        "reply_approved": false,
+        "final_answer": "0 N"
+      },
+      "expected": {
+        "demonstrated": "the right value (0 N)",
+        "missing": "weight and the table's normal force are equal and opposite, so they cancel",
+        "error": "believes the box has no weight on the table",
+        "expected_diagnosis": "the answer is right but the reason (no weight) is false",
+        "expected_behaviour": "marks the reasoning wrong although the answer is right"
+      },
+      "problem": "A 5 kg box rests on a table. What is the net force on it?",
+      "student_response": "The net force is 0 N because the box has no weight while it sits on the table.",
+      "evidence_quote": "has no weight",
+      "latency_seconds": 42.0,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 42.1,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "biology_incomplete_breathing",
+      "domain": "Biology",
+      "pattern": "incomplete",
+      "passed": true,
+      "checks": {
+        "credits_the_correct_work": true,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "During exercise the muscles do more respiration, so they produce more carbon dioxide."
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": "I'm not sure how that connects to breathing faster."
+          }
+        ],
+        "main_gap": "recognition",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student correctly identifies that muscles produce more carbon dioxide during exercise."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student does not connect the increased carbon dioxide production to the need for increased breathing rate, indicating a gap in recognizing the physiological mechanism."
+          },
+          {
+            "name": "concept",
+            "state": "untested",
+            "evidence": "The student shows no evidence of misunderstanding a concept; they simply lack the knowledge to link the identified quantity to the outcome."
+          },
+          {
+            "name": "representation",
+            "state": "fragile",
+            "evidence": "The student translates the problem into a physiological observation (increased carbon dioxide production) but does not extend this to the breathing rate."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "untested",
+            "evidence": "The student does not attempt to choose or apply a strategy to explain the connection."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve already spotted that muscles produce more carbon dioxide during exercise. Let’s lay this out clearly:\n- **What happens in muscles**: More respiration → More carbon dioxide produced.\n- **What the body needs**: Remove excess carbon dioxide and bring in more oxygen.\n\nHow could the body achieve that second part? Use this structure to spot the link.",
+        "reply_approved": true,
+        "final_answer": "Increased breathing rate supplies more oxygen to muscles and removes excess carbon dioxide produced during exercise."
+      },
+      "expected": {
+        "demonstrated": "more respiration in the muscles produces more carbon dioxide",
+        "missing": "the body detects the higher carbon dioxide and raises the breathing rate to remove it",
+        "error": null,
+        "expected_diagnosis": "the first link of the mechanism is right; the link to breathing is missing",
+        "expected_behaviour": "credits the first link, no step wrong"
+      },
+      "problem": "Explain why a person's breathing rate increases during exercise.",
+      "student_response": "During exercise the muscles do more respiration, so they produce more carbon dioxide. I'm not sure how that connects to breathing faster.",
+      "evidence_quote": "produce more carbon dioxide",
+      "latency_seconds": 32.1,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 32.1,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "biology_incorrect_plant_mass",
+      "domain": "Biology",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "wrong",
+            "quote": "Plants get most of their mass from the soil, because their roots take up nutrients."
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that plants get most of their mass from the soil by taking up nutrients through their roots",
+          "actually_gives": "the idea that soil nutrients contribute significantly to the mass of plants",
+          "asked_for": "the primary source of the mass plants build as they grow, which is carbon dioxide absorbed from the air through photosynthesis",
+          "mismatch": "Soil nutrients contribute minimally to the mass of plants, while carbon dioxide from the air is the primary source of the mass."
+        },
+        "dimensions": [
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student believes that soil nutrients are the primary source of plant mass, which contradicts the scientific understanding that most of the mass comes from carbon dioxide absorbed from the air."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student does not recognize that photosynthesis and carbon dioxide absorption are the primary processes responsible for plant mass accumulation."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresents the role of soil nutrients in plant growth, treating them as the main source of mass rather than a minor contributor."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You mention that plants take up nutrients from the soil through their roots—what do you think those nutrients are mostly used for in the plant? And where do you think the carbon comes from, which is a key part of the plant's structure?",
+        "reply_approved": true,
+        "final_answer": "Most of the mass comes from carbon dioxide absorbed from the air through photosynthesis."
+      },
+      "expected": {
+        "demonstrated": "knows roots take up nutrients",
+        "missing": "most of the mass comes from carbon dioxide in the air, fixed by photosynthesis",
+        "error": "believes most plant mass comes from the soil",
+        "expected_diagnosis": "a misconception about where plant mass comes from",
+        "expected_behaviour": "marks the claim wrong and names the misconception"
+      },
+      "problem": "Where do plants get most of the mass they build as they grow?",
+      "student_response": "Plants get most of their mass from the soil, because their roots take up nutrients.",
+      "evidence_quote": "from the soil",
+      "latency_seconds": 13.7,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 13.7,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "biology_right_answer_eye_colour",
+      "domain": "Biology",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "wrong",
+            "quote": "a child's eye colour is chosen randomly and doesn't depend on the parents"
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "wrong",
+            "quote": "Yes, because a child's eye colour is chosen randomly and doesn't depend on the parents."
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that a child's eye colour is chosen randomly and does not depend on the parents' eye colour alleles",
+          "actually_gives": "a scenario where genetic inheritance is governed by random chance rather than genetic principles like dominant and recessive alleles",
+          "asked_for": "an explanation of whether two brown-eyed parents can have a blue-eyed child based on genetic inheritance principles, specifically the transmission of recessive alleles",
+          "mismatch": "The student's claim ignores the role of alleles (dominant and recessive) in determining eye colour, which is the core concept needed to answer the question."
+        },
+        "dimensions": [
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student believes eye colour is determined randomly and independently of parental genetics, showing a lack of understanding of dominant and recessive alleles."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student does not recognize that genetic inheritance principles apply to this problem, instead treating it as a random event."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresents the problem by ignoring the genetic basis of eye colour inheritance, focusing on randomness instead."
+          },
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's answer is incorrect because it does not account for the genetic mechanisms that determine eye colour."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You mentioned that eye colour is chosen randomly and doesn’t depend on the parents. But let’s think: if eye colour isn’t random, what *does* determine it? For example, how do we explain why children often look like their parents?",
+        "reply_approved": true,
+        "final_answer": "Yes, if both parents are heterozygous (carry one recessive blue-eye allele each)."
+      },
+      "expected": {
+        "demonstrated": "the right answer (yes)",
+        "missing": "both parents can carry a recessive blue allele and each pass it on",
+        "error": "believes inheritance does not depend on the parents",
+        "expected_diagnosis": "the answer is right but the explanation is false",
+        "expected_behaviour": "marks the explanation wrong although the answer is right"
+      },
+      "problem": "Can two parents with brown eyes have a child with blue eyes? Explain.",
+      "student_response": "Yes, because a child's eye colour is chosen randomly and doesn't depend on the parents.",
+      "evidence_quote": "doesn't depend on the parents",
+      "latency_seconds": 17.7,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 17.7,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "history_incomplete_printing",
+      "domain": "History",
+      "pattern": "incomplete",
+      "passed": true,
+      "checks": {
+        "credits_the_correct_work": true,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "The printing press was invented around 1440, which is before 1517."
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": "I'm not sure how to use that to answer."
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "recognition",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student correctly identifies the dates and their chronological order but does not connect this to the spread of the 95 Theses."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student explicitly states, \"I'm not sure how to use that to answer,\" indicating a lack of recognition of how the chronological relationship could address the problem."
+          },
+          {
+            "name": "representation",
+            "state": "untested",
+            "evidence": "The attempt does not provide evidence of misrepresenting the problem or quantities."
+          },
+          {
+            "name": "concept",
+            "state": "untested",
+            "evidence": "The attempt does not demonstrate a conceptual misunderstanding; it only shows uncertainty about how to proceed."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "No procedural steps were attempted beyond identifying the dates."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve already noticed that the printing press was invented before 1517—great start! \nLet’s lay this out on a simple timeline: **1440** (printing press invented) → **1517** (95 Theses). How would this gap of time help spread Luther’s ideas?",
+        "reply_approved": true,
+        "final_answer": "Yes, the printing press (invented ~1440) could have helped spread the 95 Theses (1517) because it was available for about 77 years before the Theses were published."
+      },
+      "expected": {
+        "demonstrated": "the correct order of the two dates",
+        "missing": "linking the press's availability to copying and spreading the Theses quickly",
+        "error": null,
+        "expected_diagnosis": "chronology correct; the causal link to the spread is missing",
+        "expected_behaviour": "credits the chronology, no step wrong"
+      },
+      "problem": "Could the printing press (invented around 1440) have helped spread Martin Luther's 95 Theses (1517)? Explain using the dates.",
+      "student_response": "The printing press was invented around 1440, which is before 1517. I'm not sure how to use that to answer.",
+      "evidence_quote": "before 1517",
+      "latency_seconds": 12.2,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 12.2,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "history_incorrect_telegraph",
+      "domain": "History",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "choose_method",
+            "status": "wrong",
+            "quote": "the electric telegraph was already in common use by 1800"
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that the electric telegraph was already in common use by 1800",
+          "actually_gives": "a false historical fact about the timeline of the electric telegraph's invention and adoption",
+          "asked_for": "an accurate understanding of when the electric telegraph was invented and whether it was available in 1815",
+          "mismatch": "The electric telegraph was not invented until the 1830s and was not in common use until much later, so it could not have been used in 1815."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's claim that the electric telegraph was in common use by 1800 is factually incorrect."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresented the historical timeline of the electric telegraph's development and availability."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student demonstrated a misunderstanding of the historical context and technological capabilities of the early 19th century."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student failed to recognize the need for accurate historical knowledge to answer the question."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You say the electric telegraph was already in common use by 1800—what evidence or invention from that time supports that?",
+        "reply_approved": true,
+        "final_answer": "No, Napoleon could not have used the electric telegraph in 1815."
+      },
+      "expected": {
+        "demonstrated": "an attempt to reason from dates",
+        "missing": "the electric telegraph came into practical use only in the 1830s and 1840s",
+        "error": "a false chronological claim about the telegraph",
+        "expected_diagnosis": "the date claim is false, so the conclusion does not follow",
+        "expected_behaviour": "marks the date claim wrong"
+      },
+      "problem": "Could Napoleon have used the electric telegraph to command his army at the Battle of Waterloo in 1815?",
+      "student_response": "Yes, because the electric telegraph was already in common use by 1800.",
+      "evidence_quote": "common use by 1800",
+      "latency_seconds": 11.4,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 11.4,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "history_right_answer_older_country",
+      "domain": "History",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "wrong",
+            "quote": "the United States is an older country than France"
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "representation",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "compared the age of the United States as a country to the age of France as a country to determine which event came first",
+          "actually_gives": "a comparison of the modern nations' existence, not the timing of the two historical events",
+          "asked_for": "the chronological order of the American Declaration of Independence and the French Revolution",
+          "mismatch": "The age of a modern nation does not directly indicate when specific historical events like revolutions or declarations occurred."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's conclusion is correct, but the reasoning used to reach it is invalid and unrelated to the problem's requirements."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresents the problem by treating the age of modern nations as equivalent to the timing of historical events."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student demonstrates a misunderstanding of how to determine the chronological order of historical events, relying on an irrelevant comparison."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "weak",
+            "evidence": "The student chose an inappropriate method (comparing the age of nations) instead of comparing the dates of the events."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You're right that the Declaration of Independence came first, but the reason needs to focus on the events themselves. Let’s set up a simple timeline: one side for the American Declaration of Independence and the other for the French Revolution. What years do you think each event occurred in?",
+        "reply_approved": true,
+        "final_answer": "The American Declaration of Independence (1776) came before the French Revolution (1789)."
+      },
+      "expected": {
+        "demonstrated": "the right order (1776 before 1789)",
+        "missing": "a reason based on the actual dates of the two events",
+        "error": "a false claim: the United States is not older than France",
+        "expected_diagnosis": "the order is right but the reason is false",
+        "expected_behaviour": "marks the reasoning wrong although the order is right"
+      },
+      "problem": "Which came first, the American Declaration of Independence or the French Revolution? Explain.",
+      "student_response": "The Declaration of Independence came first, because the United States is an older country than France.",
+      "evidence_quote": "older country than France",
+      "latency_seconds": 10.5,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 10.5,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "programming_incomplete_average",
+      "domain": "Programming",
+      "pattern": "incomplete",
+      "passed": true,
+      "checks": {
+        "credits_the_correct_work": true,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "The loop adds the numbers, so total becomes 12 after the loop."
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": "I'm not sure what the last line does."
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "correct",
+            "quote": "total becomes 12 after the loop."
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "recognition",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "strong",
+            "evidence": "The student correctly identifies the quantities in the list and computes the sum (total = 12) after the loop."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student does not recognize the purpose of the last line (return total / len(xs)), which calculates the average of the list. This indicates a gap in recognizing the method needed to complete the problem."
+          },
+          {
+            "name": "concept",
+            "state": "fragile",
+            "evidence": "The student understands summing numbers in a loop but does not demonstrate understanding of averaging or division by the length of the list."
+          },
+          {
+            "name": "procedure",
+            "state": "strong",
+            "evidence": "The student correctly performs the procedure of summing the numbers in the list."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "untested",
+            "evidence": "The student does not attempt to choose or apply a strategy for the final step (division by len(xs)), indicating uncertainty about the method."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve got the sum right: total is 12 after the loop. Let’s lay out what we have and what we need:\n\n- **Sum of the list (total)**: 12\n- **Number of items (len(xs))**: 3\n- **What we want**: the value returned by the last line\n\nWhat operation connects the sum and the number of items to give the result?",
+        "reply_approved": true,
+        "final_answer": "4"
+      },
+      "expected": {
+        "demonstrated": "tracing the loop correctly to total = 12",
+        "missing": "dividing by len(xs) = 3 to return 4.0",
+        "error": null,
+        "expected_diagnosis": "the loop trace is correct; the return expression is not evaluated",
+        "expected_behaviour": "credits the trace, no step wrong"
+      },
+      "problem": "What does f([3, 7, 2]) return?\n\ndef f(xs):\n    total = 0\n    for x in xs:\n        total += x\n    return total / len(xs)",
+      "student_response": "The loop adds the numbers, so total becomes 12 after the loop. I'm not sure what the last line does.",
+      "evidence_quote": "total becomes 12",
+      "latency_seconds": 13.0,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 13.0,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "programming_incorrect_range",
+      "domain": "Programming",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "wrong",
+            "quote": "range(3) counts from 1 up to 3"
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "wrong",
+            "quote": "It prints 1, 2, 3"
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "assumed that range(3) starts counting from 1 and goes up to 3",
+          "actually_gives": "a sequence of numbers starting from 0 and ending at 2 (0, 1, 2)",
+          "asked_for": "the sequence of numbers generated by range(3), which starts at 0 and ends at 2",
+          "mismatch": "The student believed range(3) produces 1, 2, 3, but it actually produces 0, 1, 2."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's final answer (1, 2, 3) is incorrect, as the correct output is 0, 1, 2."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresented the behavior of the range function, believing it starts at 1 instead of 0."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student demonstrated a misunderstanding of how the range function works in Python, specifically its starting value."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "The student did not perform any procedural steps beyond the initial misconception."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "untested",
+            "evidence": "No evidence of alternative strategies being considered or chosen."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "Let's slow down for a moment. Which step of your answer are you least sure about, and why?",
+        "reply_approved": false,
+        "final_answer": "0\n1\n2"
+      },
+      "expected": {
+        "demonstrated": "knows the loop prints one value per iteration",
+        "missing": "range(3) gives 0, 1, 2: it starts at 0 and stops before 3",
+        "error": "believes range(n) counts from 1 to n",
+        "expected_diagnosis": "a misconception about range's start and end",
+        "expected_behaviour": "marks the claim about range wrong"
+      },
+      "problem": "What does this Python code print?\n\nfor i in range(3):\n    print(i)",
+      "student_response": "It prints 1, 2, 3 because range(3) counts from 1 up to 3.",
+      "evidence_quote": "counts from 1 up to 3",
+      "latency_seconds": 19.4,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 19.4,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "programming_right_answer_modulo",
+      "domain": "Programming",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "compute",
+            "status": "wrong",
+            "quote": "% divides x by 2 and 7 / 2 = 3.5, which isn't a whole number."
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "Divided 7 by 2 and checked if the result (3.5) is a whole number",
+          "actually_gives": "The quotient of 7 divided by 2, which is 3.5",
+          "asked_for": "The remainder of 7 divided by 2, which is 1, and then whether that remainder equals 1",
+          "mismatch": "The modulus operator % returns the remainder after division, not the quotient, and the problem asks for a comparison of that remainder to 1."
+        },
+        "dimensions": [
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student incorrectly describes % as division that returns the quotient, not the remainder."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misinterprets the modulus operator % as producing a quotient with a decimal, rather than an integer remainder."
+          },
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student arrives at the correct final answer (True) but for the wrong reason."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "No procedural slip is evident; the error is conceptual."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You're on the right track thinking about division, but the % operator doesn't give the quotient—it gives something else from the division. What do you think % might represent if it’s not the result of 7 divided by 2?",
+        "reply_approved": true,
+        "final_answer": "True"
+      },
+      "expected": {
+        "demonstrated": "the right output (True)",
+        "missing": "% gives the remainder: 7 % 2 = 1, so the comparison is True",
+        "error": "believes % is division",
+        "expected_diagnosis": "the output is right but the meaning of % is wrong",
+        "expected_behaviour": "marks the explanation of % wrong although the output is right"
+      },
+      "problem": "With x = 7, what does print(x % 2 == 1) print? Explain.",
+      "student_response": "It prints True, because % divides x by 2 and 7 / 2 = 3.5, which isn't a whole number.",
+      "evidence_quote": "% divides x by 2",
+      "latency_seconds": 25.9,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 25.9,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "chemistry_incomplete_moles",
+      "domain": "Chemistry",
+      "pattern": "incomplete",
+      "passed": true,
+      "checks": {
+        "credits_the_correct_work": true,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "The molar mass of water is 2(1) + 16 = 18 g/mol."
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "recognition",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student correctly calculates the molar mass of water but does not proceed further."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student does not know what to do with the molar mass they calculated, indicating a gap in recognizing the method to find the number of moles."
+          },
+          {
+            "name": "representation",
+            "state": "strong",
+            "evidence": "The student correctly identifies and calculates the molar mass of water, showing they understand the representation of molar mass."
+          },
+          {
+            "name": "concept",
+            "state": "untested",
+            "evidence": "The student does not demonstrate a misunderstanding of concepts but also does not show application of the mole concept beyond molar mass."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "The student correctly calculates the molar mass but does not proceed to use it in the required procedure."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve got the molar mass of water (18 g/mol) correctly! Let’s lay this out so the relationship between the quantities is clearer. We have:\n- **Mass of water**: 36 g\n- **Molar mass of water**: 18 g/mol\n- **Moles of water**: ?\n\nHow could you use these three parts to find the missing piece?",
+        "reply_approved": true,
+        "final_answer": "2 moles"
+      },
+      "expected": {
+        "demonstrated": "the correct molar mass, 18 g/mol",
+        "missing": "moles = mass / molar mass = 36 / 18 = 2 mol",
+        "error": null,
+        "expected_diagnosis": "molar mass correct; the division to get moles is missing",
+        "expected_behaviour": "credits the molar mass, no step wrong"
+      },
+      "problem": "How many moles are in 36 g of water (H2O)?",
+      "student_response": "The molar mass of water is 2(1) + 16 = 18 g/mol. I don't know what to do with that.",
+      "evidence_quote": "18 g/mol",
+      "latency_seconds": 16.1,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 16.1,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "chemistry_incorrect_dissolving",
+      "domain": "Chemistry",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "wrong",
+            "quote": "the salt is destroyed when it dissolves, so it is no longer there"
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that the salt is destroyed and no longer present when it dissolves",
+          "actually_gives": "a description where the salt ceases to exist as a substance",
+          "asked_for": "an explanation of whether the salt remains present in some form (e.g., as ions) after dissolving",
+          "mismatch": "The student believes dissolving destroys the salt, but the problem asks for an explanation of its continued presence in a different form."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's conclusion is incorrect, as they claim the salt is destroyed and no longer present."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student demonstrates a misconception about dissolving, believing it destroys the salt rather than breaking it into smaller particles (ions) that remain present."
+          },
+          {
+            "name": "representation",
+            "state": "untested",
+            "evidence": "The attempt does not involve translating between different representations (e.g., diagrams, symbols, or models)."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student fails to recognize that dissolving is a physical change where the substance (salt) remains present, albeit in a different form."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "There is no procedural work (e.g., calculations or experiments) in this attempt."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You said the salt is destroyed when it dissolves. If the salt were truly destroyed, what would happen to its particles—would they vanish completely, or could they still exist in another form?",
+        "reply_approved": true,
+        "final_answer": "No, the salt does not disappear; it dissolves into ions and remains present in the water."
+      },
+      "expected": {
+        "demonstrated": "notices the salt can no longer be seen",
+        "missing": "the salt separates into ions spread through the water; its mass is conserved",
+        "error": "believes dissolving destroys the substance",
+        "expected_diagnosis": "a misconception about dissolving and conservation of mass",
+        "expected_behaviour": "marks the claim wrong and names the misconception"
+      },
+      "problem": "When salt dissolves in water, does the salt disappear? Explain.",
+      "student_response": "Yes, the salt is destroyed when it dissolves, so it is no longer there.",
+      "evidence_quote": "salt is destroyed",
+      "latency_seconds": 29.3,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 29.3,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "chemistry_right_answer_ice",
+      "domain": "Chemistry",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "wrong",
+            "quote": "ice is a solid and solids are always lighter than liquids"
+          },
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that solids are always lighter than liquids",
+          "actually_gives": "a general statement that does not account for the specific densities of ice and liquid water",
+          "asked_for": "an explanation based on the relative densities of ice and liquid water",
+          "mismatch": "The student's claim assumes all solids are lighter than all liquids, but the problem requires comparing the specific densities of ice and liquid water."
+        },
+        "dimensions": [
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student believes solids are always lighter than liquids, which is a false generalization about density and states of matter."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misrepresents the relationship between states of matter and density, treating it as a universal rule rather than a property specific to substances."
+          },
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's explanation is incorrect because it relies on a false belief about solids and liquids."
+          },
+          {
+            "name": "recognition",
+            "state": "untested",
+            "evidence": "The attempt does not show whether the student recognizes the correct principle (density) or method for solving the problem."
+          },
+          {
+            "name": "procedure",
+            "state": "untested",
+            "evidence": "No procedural steps were attempted or shown."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You said solids are *always* lighter than liquids—that’s a general rule. But is ice the only solid you’ve seen float, or are there others that sink, like a rock or a coin? What makes ice different?",
+        "reply_approved": true,
+        "final_answer": "Yes, ice floats on liquid water because its density is lower than that of liquid water."
+      },
+      "expected": {
+        "demonstrated": "the right answer (ice floats)",
+        "missing": "ice is less dense than water because hydrogen bonds hold its molecules in an open structure",
+        "error": "a false generalization: most solids are denser than their liquids",
+        "expected_diagnosis": "the answer is right but the general rule given is false",
+        "expected_behaviour": "marks the reasoning wrong although the answer is right"
+      },
+      "problem": "Does ice float on liquid water? Explain why.",
+      "student_response": "Yes, because ice is a solid and solids are always lighter than liquids.",
+      "evidence_quote": "solids are always lighter than liquids",
+      "latency_seconds": 35.0,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 35.1,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "logic_incomplete_syllogism",
+      "domain": "Logic / critical reasoning",
+      "pattern": "incomplete",
+      "passed": false,
+      "checks": {
+        "credits_the_correct_work": false,
+        "no_step_wrong": true,
+        "no_error_stated": true,
+        "something_still_missing": true,
+        "gap_found_and_not_a_misconception": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "choose_method",
+            "status": "missing",
+            "quote": "From the first two premises, all whales are warm-blooded. I'm not sure how the third premise fits in."
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "recognition",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": null,
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student correctly combines the first two premises but does not use the third premise to reach the final conclusion."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student fails to recognize how the third premise ('Some sea creatures are whales') connects to their intermediate conclusion to form the final answer."
+          },
+          {
+            "name": "representation",
+            "state": "strong",
+            "evidence": "The student accurately represents the relationships in the first two premises and correctly concludes that all whales are warm-blooded."
+          },
+          {
+            "name": "concept",
+            "state": "untested",
+            "evidence": "The attempt does not reveal any misconceptions about logical relationships, but it does not fully test the student's understanding of syllogistic reasoning."
+          },
+          {
+            "name": "strategy_choice",
+            "state": "untested",
+            "evidence": "The student does not demonstrate an alternative strategy, so this dimension is untested."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You’ve rightly seen that all whales are warm-blooded. Let’s put the parts in order so the links become clear:\n\n- Known: All mammals → warm-blooded\n- Known: All whales → mammals\n- Known: Some sea creatures → whales\n- Unknown: Some sea creatures → ?\n\nWhat does this list show you about some sea creatures?",
+        "reply_approved": true,
+        "final_answer": "Some sea creatures are warm-blooded."
+      },
+      "expected": {
+        "demonstrated": "a valid inference from the first two premises",
+        "missing": "combining it with the third premise: some sea creatures are warm-blooded",
+        "error": null,
+        "expected_diagnosis": "the first inference is valid; the final inference is missing",
+        "expected_behaviour": "credits the first inference, no step wrong"
+      },
+      "problem": "Premises: All mammals are warm-blooded. All whales are mammals. Some sea creatures are whales. What can you conclude about some sea creatures?",
+      "student_response": "From the first two premises, all whales are warm-blooded. I'm not sure how the third premise fits in.",
+      "evidence_quote": "all whales are warm-blooded",
+      "latency_seconds": 22.6,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 22.6,
+      "failure_category": "Diagnosis",
+      "failure_description": "failed checks: credits_the_correct_work; steps: choose_method=missing, set_up=missing, substitute=missing, interpret=missing; main_gap: recognition; error stated: no; mode: teach"
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "logic_incorrect_converse",
+      "domain": "Logic / critical reasoning",
+      "pattern": "incorrect",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "the street is wet and rain makes the street wet"
+          },
+          {
+            "role": "choose_method",
+            "status": "wrong",
+            "quote": "Yes, it must have rained, because the street is wet and rain makes the street wet."
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "interpret",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "concluded that it must have rained because the street is wet and rain makes the street wet",
+          "actually_gives": "a possible explanation for the street being wet (rain)",
+          "asked_for": "whether it necessarily follows that it rained, given the street is wet",
+          "mismatch": "The student treated a possible cause as the only possible cause, ignoring other reasons the street could be wet."
+        },
+        "dimensions": [
+          {
+            "name": "correctness",
+            "state": "weak",
+            "evidence": "The student's conclusion is incorrect, as they assert that it must have rained without considering alternative causes for the street being wet."
+          },
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student demonstrates a misunderstanding of logical implication and causality, treating a one-way conditional statement ('If it rains, the street gets wet') as if it were biconditional."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student fails to recognize that the problem involves evaluating the validity of an inverse conclusion ('The street is wet, so it rained') rather than a direct implication."
+          },
+          {
+            "name": "representation",
+            "state": "fragile",
+            "evidence": "The student correctly identifies the quantities (rain and wet street) but misrepresents the relationship between them as definitive rather than conditional."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You're right that rain makes the street wet, and the street *is* wet here. But if I told you the street is wet, and you only know 'If it rains, the street gets wet,' could there be another reason the street is wet that doesn’t involve rain?",
+        "reply_approved": true,
+        "final_answer": "No, it does not necessarily follow that it rained."
+      },
+      "expected": {
+        "demonstrated": "restates the premises correctly",
+        "missing": "the street could be wet for another reason; the conclusion does not follow",
+        "error": "affirming the consequent (an invalid inference)",
+        "expected_diagnosis": "an invalid inference: affirming the consequent",
+        "expected_behaviour": "marks the inference wrong"
+      },
+      "problem": "If it rains, the street gets wet. The street is wet. Does it follow that it rained?",
+      "student_response": "Yes, it must have rained, because the street is wet and rain makes the street wet.",
+      "evidence_quote": "it must have rained",
+      "latency_seconds": 17.5,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 17.5,
+      "failure_category": null,
+      "failure_description": null
+    },
+    {
+      "model": "Mistral Large 3",
+      "model_id": "mistral.mistral-large-3-675b-instruct",
+      "case_id": "logic_right_answer_even",
+      "domain": "Logic / critical reasoning",
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": true,
+      "checks": {
+        "marks_the_false_claim_wrong": true,
+        "error_stated": true,
+        "gap_found": true,
+        "teaches": true
+      },
+      "actual_diagnosis": {
+        "steps": [
+          {
+            "role": "identify_quantities",
+            "status": "correct",
+            "quote": "10 is even."
+          },
+          {
+            "role": "choose_method",
+            "status": "wrong",
+            "quote": "even numbers are not divisible by 4."
+          },
+          {
+            "role": "interpret",
+            "status": "wrong",
+            "quote": "No. 10 is not divisible by 4, because it is even, and even numbers are not divisible by 4."
+          },
+          {
+            "role": "identify_quantities",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "set_up",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "substitute",
+            "status": "missing",
+            "quote": null
+          },
+          {
+            "role": "compute",
+            "status": "missing",
+            "quote": null
+          }
+        ],
+        "main_gap": "concept",
+        "evidence": "sufficient",
+        "confidence": "high",
+        "error": {
+          "student_did": "claimed that even numbers are not divisible by 4 and concluded that 10 is not divisible by 4 because it is even",
+          "actually_gives": "a false generalization that no even number is divisible by 4, and an incorrect logical conclusion based on that generalization",
+          "asked_for": "an understanding that divisibility by 4 implies evenness but not all even numbers are divisible by 4, and a correct conclusion about whether 10 is divisible by 4",
+          "mismatch": "The student treated the given statement ('If a number is divisible by 4, then it is even') as a biconditional, which is not valid."
+        },
+        "dimensions": [
+          {
+            "name": "concept",
+            "state": "weak",
+            "evidence": "The student incorrectly generalizes that even numbers are not divisible by 4, showing a misunderstanding of the relationship between divisibility by 4 and evenness."
+          },
+          {
+            "name": "representation",
+            "state": "weak",
+            "evidence": "The student misinterprets the given conditional statement as a biconditional, failing to distinguish between 'if divisible by 4 then even' and 'if even then divisible by 4'."
+          },
+          {
+            "name": "correctness",
+            "state": "fragile",
+            "evidence": "The student's final answer ('No') is correct, but their reasoning is based on a false premise and incorrect logic."
+          },
+          {
+            "name": "recognition",
+            "state": "weak",
+            "evidence": "The student fails to recognize that the given statement is a one-way conditional and does not imply its converse."
+          }
+        ],
+        "mode": "teach",
+        "diagnosis_failure": null,
+        "reply": "You said, \"even numbers are not divisible by 4.\" Let’s test this. Can you think of an even number that *is* divisible by 4?",
+        "reply_approved": true,
+        "final_answer": "No, the conclusion that 10 is divisible by 4 does not follow."
+      },
+      "expected": {
+        "demonstrated": "the right answer (no)",
+        "missing": "the premise says nothing about even numbers in general; check 10 / 4 directly",
+        "error": "a false claim: many even numbers (4, 8, 12) are divisible by 4",
+        "expected_diagnosis": "the answer is right but the stated rule is false",
+        "expected_behaviour": "marks the reasoning wrong although the answer is right"
+      },
+      "problem": "If a number is divisible by 4, then it is even. 10 is even. Is 10 divisible by 4? Explain.",
+      "student_response": "No. 10 is not divisible by 4, because it is even, and even numbers are not divisible by 4.",
+      "evidence_quote": "even numbers are not divisible by 4",
+      "latency_seconds": 18.9,
+      "latency_covers": "set_up plus the full teaching turn (diagnosis, strategy, teaching, verifier)",
+      "junit_seconds": 18.9,
+      "failure_category": null,
+      "failure_description": null
+    }
+  ],
+  "overall": {
+    "passed": 20,
+    "failed": 1,
+    "total": 21,
+    "pass_rate_percent": 95.2,
+    "display": "20 / 21 = 95.2%",
+    "failure_categories": {
+      "Diagnosis": 1
+    }
+  },
+  "by_domain": [
+    {
+      "domain": "Mathematics",
+      "passed": 3,
+      "failed": 0,
+      "total": 3,
+      "pass_rate_percent": 100.0,
+      "display": "3 / 3 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "domain": "Physics",
+      "passed": 3,
+      "failed": 0,
+      "total": 3,
+      "pass_rate_percent": 100.0,
+      "display": "3 / 3 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "domain": "Biology",
+      "passed": 3,
+      "failed": 0,
+      "total": 3,
+      "pass_rate_percent": 100.0,
+      "display": "3 / 3 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "domain": "History",
+      "passed": 3,
+      "failed": 0,
+      "total": 3,
+      "pass_rate_percent": 100.0,
+      "display": "3 / 3 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "domain": "Programming",
+      "passed": 3,
+      "failed": 0,
+      "total": 3,
+      "pass_rate_percent": 100.0,
+      "display": "3 / 3 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "domain": "Chemistry",
+      "passed": 3,
+      "failed": 0,
+      "total": 3,
+      "pass_rate_percent": 100.0,
+      "display": "3 / 3 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "domain": "Logic / critical reasoning",
+      "passed": 2,
+      "failed": 1,
+      "total": 3,
+      "pass_rate_percent": 66.7,
+      "display": "2 / 3 = 66.7%",
+      "failure_categories": {
+        "Diagnosis": 1
+      }
+    }
+  ],
+  "by_pattern": [
+    {
+      "pattern": "incomplete",
+      "passed": 6,
+      "failed": 1,
+      "total": 7,
+      "pass_rate_percent": 85.7,
+      "display": "6 / 7 = 85.7%",
+      "failure_categories": {
+        "Diagnosis": 1
+      }
+    },
+    {
+      "pattern": "incorrect",
+      "passed": 7,
+      "failed": 0,
+      "total": 7,
+      "pass_rate_percent": 100.0,
+      "display": "7 / 7 = 100.0%",
+      "failure_categories": {}
+    },
+    {
+      "pattern": "correct_answer_wrong_reasoning",
+      "passed": 7,
+      "failed": 0,
+      "total": 7,
+      "pass_rate_percent": 100.0,
+      "display": "7 / 7 = 100.0%",
+      "failure_categories": {}
+    }
+  ],
+  "failure_category_counts": {
+    "Diagnosis": 1
+  },
+  "records_missing": []
+}
