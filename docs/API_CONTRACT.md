@@ -39,7 +39,7 @@ Design in brief: the student talks to one tutor interface. A **tutor agent** spl
 
 **`TutorTurn`**: `session_id`; `phase`; `message` (the approved reply); optional `diagnosis` (steps with role, status and a quote of the student's words; main gap; alternatives with a confidence label each; confidence label); optional `method` (name, `mode`, experiment flag, reason); optional `follow_up` (problem text only, never the rubric); `hints_used`; `reply_check` (approved flag and a short summary).
 
-**`Verdict`**: `result` (`VERIFIED` or `NOT YET`); `evidence`; `independent`; `remaining_gap`; `changes` with the before and after of the concept state and of the strategy counts.
+**`Verdict`**: `result` (`VERIFIED` or `NOT YET`); `evidence`; `independent`; `remaining_gap`; `changes` with the before and after of the concept state and of the strategy counts. The verdict response also carries `session_over`: `true` after VERIFIED or after the second NOT YET (then `message` says what was learned and offers to exit), `false` after a first NOT YET. After a `false`, the student sends a normal attempt and gets a `teach` turn.
 
 **`LearnerView`**: student, seeded flag, concepts each with state and evidence lines.
 
@@ -172,6 +172,7 @@ Response, phase `verdict`:
 {
   "session_id": "d96e9546-b0bf-43a7-acdc-42f43ae8adac",
   "phase": "verdict",
+  "session_over": true,
   "verdict": {
     "result": "VERIFIED",
     "evidence": "Chose the equation that needs no time and substituted correctly, with no hints on this problem.",
@@ -189,6 +190,34 @@ Response, phase `verdict`:
   }
 }
 ```
+
+Response, phase `verdict`, first NOT YET (the next attempt gets a new `teach` turn with a re-diagnosis; a failed experiment returns to the best known method):
+
+```json
+{
+  "session_id": "d96e9546-b0bf-43a7-acdc-42f43ae8adac",
+  "phase": "verdict",
+  "session_over": false,
+  "message": "Not yet. You started by finding the time again. Let's try a different way in.",
+  "verdict": {
+    "result": "NOT YET",
+    "evidence": "Started by finding the time instead of choosing the equation that needs no time.",
+    "independent": true,
+    "remaining_gap": "recognition",
+    "changes": {
+      "concept": { "concept_id": "44d54897-9ec4-45b9-8da1-d4ea95697d1d", "name": "Constant-acceleration kinematics", "before": "fragile", "after": "fragile" },
+      "strategy": {
+        "gap": "recognition",
+        "method": "visual_decomposition",
+        "before": { "uses": 9, "independent_successes": 7 },
+        "after": { "uses": 10, "independent_successes": 7 }
+      }
+    }
+  }
+}
+```
+
+After the second NOT YET the same shape is returned with `session_over: true`, and the outcome is recorded as not verified.
 
 ### POST /api/session/{id}/exit
 
@@ -316,14 +345,20 @@ Follow-up problem:
 
 ### Verifier result
 
-- **In:** a tutor reply or follow-up (reply check), or the student's follow-up attempt with the hidden rubric (student check).
-- **Out:** mode; approved or rejected; rejection reason (`answer_leak`, `heavy_hint`, `method_drift`, `shaming_tone`, `invalid_followup`, `not_independent`); a short note; for the student check: correct, reasoning quality label, and the independence input (`own_work`).
-- **Consumer:** code. It retries once on rejection, then falls back safely; the final VERIFIED decision is code's (hint count and independence come from code, not from the verifier alone).
+- **In:** a tutor reply (reply check), a follow-up problem (follow-up check), or the student's follow-up attempt with the hidden rubric (student check).
+- **Out:** mode (`reply_check`, `follow_up_check`, `student_check`); approved or rejected; rejection reason (`answer_leak`, `heavy_hint`, `method_drift`, `shaming_tone` for replies; `invalid_followup`, `answer_leak` for follow-ups; `not_independent` for the student check); a short note; for the student check: correct, reasoning quality label, and the independence input (`own_work`).
+- **Consumer:** code. On rejection it regenerates with the reason, up to 2 times, then falls back safely (a safe generic question, or a curated follow-up for the concept); the final VERIFIED decision is code's (hint count and independence come from code, not from the verifier alone).
 
 Rejected reply:
 
 ```json
 { "mode": "reply_check", "approved": false, "reason": "answer_leak", "note": "The reply states the final height." }
+```
+
+Rejected follow-up:
+
+```json
+{ "mode": "follow_up_check", "approved": false, "reason": "invalid_followup", "note": "The problem needs a different principle, not just a different surface." }
 ```
 
 Student check:

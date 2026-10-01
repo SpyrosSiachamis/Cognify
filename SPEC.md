@@ -44,7 +44,7 @@ Screens from the mockups: Problem Inbox, Depth Selector and Level 1 Answer. Only
 |---|---|---|---|---|---|
 | F1 | Problem Inbox | Paste or type a problem (2000 characters), optional subject chips (Math, Physics, Biology, Chemistry, Other), "Try an example". | The example loads in one click and Continue opens the Depth Selector. | P0 | FE |
 | F2 | Depth Selector | Two cards (Answer and Master) with one line of intent each, selected card highlighted, "Edit problem". No cards are shown for the unbuilt levels. | A judge understands the two levels in under 15 seconds. | P0 | FE |
-| F3 | Level 1: Answer | Final result plus short steps, formulas rendered cleanly. Shows the note that this does not count as mastery evidence. Buttons: Ask a follow-up, Try a similar question, Switch to Master. | Answer appears fast and nothing about the learner changes. | P1 | AI, FE |
+| F3 | Level 1: Answer | Final result plus short steps, formulas rendered cleanly. Shows the note that this does not count as mastery evidence. Only button: Switch to Master. | Answer appears fast and nothing about the learner changes. | P1 | AI, FE |
 
 ## 2. Features: Master mode, the core loop
 
@@ -57,12 +57,12 @@ This is the product. Everything here is P0 and it is what the judges will watch.
 | F8 | Reasoning read-out | Rates the response as Strong, Fragile, Weak or Untested on: correctness, recognition, representation, concept, procedure, strategy choice, self-correction, hint dependency, transfer. Each rating cites evidence. No made-up percentages. | UI shows at least the 3 to 5 most relevant dimensions with a quote each. | P0 | AI, FE |
 | F9 | Active diagnosis and Gap Reveal | Keeps two or three possible explanations. If unsure, asks one 10-second probe to tell them apart. Then shows the main gap with evidence and confidence, in a warm tone that does not shame. | Same wrong answer, two different causes: the probe separates them in the demo. | P0 | AI, FE |
 | F10 | Teaching strategy library | Socratic questions, visual decomposition, worked example, analogy, counterexample, representation switch, micro-hint. | Minimum 4 working: Socratic, visual, worked example, micro-hint. The rest are P1. | P0 | AI |
-| F11 | Best-method choice | Picks the strategy with the best verified record for this student and gap type, and says why on screen ("Worked 7 of 9 times for you"). New students start from sensible defaults. | Seeded history visibly changes which strategy is chosen. | P0 | AI, DATA |
-| F12 | Exploration | Sometimes picks an untried, thinly tested or out-of-date strategy even when another has worked, and tells the student it is an experiment. The result counts as evidence like any other. | A demo switch forces an experiment; it never happens during verification. | P0 | AI, DATA |
+| F11 | Best-method choice | Picks the strategy with the best verified record for this student and gap type, and says why on screen ("Worked 7 of 9 times for you"). New students start from sensible defaults. The method is returned by the `choose_strategy` tool and recorded by the app. | Seeded history visibly changes which strategy is chosen. | P0 | AI, DATA |
+| F12 | Exploration | Sometimes picks an untried, thinly tested or out-of-date strategy even when another has worked, and tells the student it is an experiment. The result counts as evidence like any other. The method is returned by the `choose_strategy` tool and recorded by the app. | A demo switch forces an experiment; it never happens during verification. | P0 | AI, DATA |
 | F13 | One small teaching move | Gives the smallest useful question or hint, then waits for the student. Goal: fewer and smaller hints over time. | No teaching turn gives more than one new idea. | P0 | AI |
 | F14 | Personal follow-up problem | Builds the secondary problem from this student's own answer: their weakest step, their diagnosed gap, and how far their understanding survives changes. Keeps the same underlying principle. Never repeats a problem they have seen. | Two students with the same problem get different follow-ups (section 5). | P0 | AI |
 | F15 | Stress test | A fresh problem with no hints and no scaffolding, changing at least one thing: wording, representation, context or distractors. | It looks different from the first problem but needs the same principle. | P0 | AI, FE |
-| F16 | Verification | Shows VERIFIED or NOT YET with evidence. Judges independence separately from correctness. If NOT YET, updates the diagnosis and changes approach instead of repeating. | A lucky correct answer after many hints is not marked VERIFIED. | P0 | AI, FE |
+| F16 | Verification | Shows VERIFIED or NOT YET with evidence. Judges independence separately from correctness. If NOT YET, updates the diagnosis and changes approach instead of repeating. A correct and independent first thought goes straight to the follow-up. VERIFIED is decided by code from the verifier's judgement, the hint count and freshness. | A lucky correct answer after many hints is not marked VERIFIED. | P0 | AI, FE |
 | F17 | Learning from the outcome | After each loop the app remembers which strategy was used, whether it led to independent success, hints used, and the before and after state of the concept. | The next session picks differently because of the last one. | P0 | DATA |
 
 ## 3. Features: making both learners visible
@@ -88,7 +88,7 @@ The student learns the concept, and Cognify learns how to teach that student. Th
 | F27 | Offline demo path | A rehearsed, pre-saved version of the full Maria story that runs with no network or AI. | One switch plays the whole story start to finish. | P0 | PITCH |
 | F28 | Public deployment | The app runs at a public address and works from a second device. | The full demo works from a phone on mobile data. | P1 | PITCH |
 | F29 | Tests | Backend: strategy choice, exploration rules, follow-up never repeating, verification updates. Frontend: depth selection and one full-flow check. | Tests pass before every merge to main. | P1 | AI, PITCH |
-| F30 | Reply guard | Every Master reply and follow-up is checked for the answer, a heavy hint and method drift before it is sent. | A reply that states the answer never reaches the student. | P0 | AI |
+| F30 | Reply guard | Every Master reply and follow-up is checked for the answer, a heavy hint and method drift before it is sent. A rejected one is regenerated with the reason up to 2 times, then a safe fallback is sent. | A reply that states the answer never reaches the student. | P0 | AI |
 
 ## 5. The Master loop, step by step
 
@@ -136,11 +136,11 @@ Reference path for the demo and for building F6-F17 in the right order.
 |---|---|---|
 | M0 Repo and health | Frontend opens, backend answers, one request crosses between them. | F26 |
 | M1 Hardcoded slice | Problem to Level 5 to fixed diagnosis, fixed teaching, fixed verification, VERIFIED screen. No live AI. | F1, F2, F6, F9, F15, F16 |
-| M2 Real diagnosis | One live AI call returns a checked diagnosis built from split steps. | F7, F8, F9, F25 |
-| M3 Adaptive teaching | Strategy is chosen from seeded history, can run an experiment, and the teaching move is generated live. | F10-F13, F24 |
+| M2 Real diagnosis | One live AI call returns a checked diagnosis built from split steps. | F3, F7, F8, F9, F25 |
+| M3 Adaptive teaching | Strategy is chosen from seeded history, can run an experiment, and the teaching move is generated live. | F10-F13, F24, F30 |
 | M4 Follow-up and verifier | Personal follow-up generated from the student's answer; independent attempt judged. | F14, F15, F16 |
 | M5 Memory | Session outcome and strategy result are saved and used next time. | F17 |
-| M6 Two-learner views | Understanding Map and How You Learn change after verification. | F18, F19, F23 |
+| M6 Two-learner views | Understanding Map and How You Learn change after verification. | F18, F19, F20, F21, F23 |
 | M7 Reliability | Timeouts, fallback, offline path, public deployment tested from another device. | F25, F27, F28, F29 |
 | M8 Stop building | Rehearse, remove fragile extras, prepare judge answers. | F22 if time |
 
@@ -195,8 +195,8 @@ futureed/
 |-- AGENTS.md, CLAUDE.md   rules for anyone writing code
 |-- SPEC.md                this document
 |-- README.md
-|-- docs/                  LEVELS, REASONING, TEACHING, FOLLOWUPS, SCREENS,
-|                          PROMPTS, DATA, DEMO, API_CONTRACT, ARCHITECTURE
+|-- docs/                  ARCHITECTURE, API_CONTRACT, DATA, PROMPTS, SCREENS,
+|                          DEMO
 |-- frontend/              Next.js app
 |   `-- routes: Home, Level 1, Level 5 (Master), My Learning + placeholders
 |   `-- components: DepthSelector, StepList, GapReveal, HintPanel,
@@ -206,7 +206,7 @@ futureed/
 |-- backend/
 |   |-- app/               entry point, routes, checked data shapes
 |   |   `-- services/      ai_gateway, tutor, strategy_choice,
-|   |                      followup, novelty, verification
+|   |                      novelty, verification, history
 |   |-- prompts/           one text prompt per service
 |   `-- tests/
 |-- supabase/              database setup and seeded demo history
@@ -215,21 +215,19 @@ futureed/
 
 ## 9. What each .md file should contain
 
+Short and authoritative. If a teammate or an AI coding tool has a question, one of these files should answer it.
+
 | File | Should contain |
 |---|---|
-| AGENTS.md / CLAUDE.md | Rules for anyone writing code, human or AI: demo reliability beats features; never use an AI answer without checking it; no provider keys in the frontend; Master never reveals the full answer; every diagnosis quotes student evidence; every experiment is labelled and recorded; seeded data is always labelled; no feature without an ID in SPEC.md; run tests after each change; keep the Maria story working. |
-| SPEC.md | This document. The single source of truth for scope. |
-| README.md | What Cognify is in three lines, how to install and run locally, how to load the demo history, how to run tests, the live demo address and who owns what. |
-| docs/LEVELS.md | For Levels 1 and 5: what the student sees (matching the mockups), the buttons on each screen, and whether the level counts as evidence. |
-| docs/REASONING.md | How an answer is cut into steps, the step names, the nine dimensions, the Strong / Fragile / Weak / Untested scale, with the ball problem worked through. |
-| docs/TEACHING.md | The seven strategies and when each fits, how the best one is chosen, the exploration rules and their settings, and how outcomes are scored (independent success, fewer hints, reasoning quality). |
-| docs/FOLLOWUPS.md | How a secondary problem is built from a student's own answer: weakest step, gap, how far they survive changes, difficulty, the same-principle and never-repeat checks, plus the Maria and Nikos example. |
-| docs/SCREENS.md | Every screen with its purpose and features; the look from the mockups (library background, cream cards, serif headings, navy selected level, gold accents); colour meanings: green VERIFIED, amber in progress, warm red for gaps, never shaming. |
-| docs/PROMPTS.md | In plain words: the job of each AI prompt, what it may and may not reveal, and the rules (cite evidence, low confidence means probe instead of label, keep the principle, judge independence separately). |
-| docs/DATA.md | A plain-language list of what the app remembers and why, tied to F17, F18, F19 and F24. Database setup is owned by the Supabase work. |
+| AGENTS.md / CLAUDE.md | Rules for anyone writing code, human or AI: demo reliability beats features; never use an AI answer without checking it; no provider keys or provider calls in the frontend; Master never reveals the full answer; every diagnosis quotes student evidence; the teaching method comes from the `choose_strategy` tool and is recorded; every experiment is labelled; every Master reply and follow-up is verified before it is sent; code, not the model, decides VERIFIED; Level 1 writes nothing; seeded data is always labelled; no feature without an ID in SPEC.md; run tests after each change; keep the Maria story working. |
+| SPEC.md | The single source of truth for scope: the definition, Ideas A and B, the two levels (Answer and Master), the feature table with IDs, priorities and done-when lines, the Master loop, milestones, the Parked list and guardrails. |
+| README.md | What Cognify is in three lines, how to run it locally (Docker Compose, `.env`, health check), how to load the seeded demo history, how to run tests, the live demo address and who owns what. |
+| docs/ARCHITECTURE.md | How the backend works: the tutor agent, the verification LLM and its three modes, what is code and what is AI, the session phases, the `choose_strategy` rules and exploration settings, the retry caps and fallbacks, and what each side can see. |
+| docs/API_CONTRACT.md | The agreement between frontend and backend: endpoints under `/api`, one JSON example per request and response, the allowed values, the error shape, demo mode, and the contracts between backend pieces (strategy tool, tutor agent output, verifier result). All IDs are UUIDs. Exact field types come from the Pydantic models. |
+| docs/DATA.md | A plain-language list of what the app remembers and why, tied to F11, F12, F17, F18, F19 and F24: when each thing is written, the concept-state moves, and what the seeded demo history for Maria and Nikos contains. The database setup itself lives in `supabase/`. |
+| docs/PROMPTS.md | In plain words, one section per AI role (tutor agent, verifier): its job, its inputs, what it may and may not reveal, and its rules (cite evidence, low confidence means probe instead of label, one new idea per turn, keep the principle in follow-ups, reply in the student's language). It also holds the step names, the nine dimensions and the Strong / Fragile / Weak / Untested scale, with the ball problem worked through. |
+| docs/SCREENS.md | Each phase and view mapped to a screen, including the Level 1 screen; the look from the mockups (library background, cream cards, serif headings, navy and gold buttons); colour meanings (green only for VERIFIED, amber in progress, warm red for gaps, never shaming); the seeded and reply-check badges; thinking, empty and error states. |
 | docs/DEMO.md | The live demo script step by step, who clicks what, timings, the 90-second pitch, the judge Q&A, and how to switch to the offline path (F27). |
-| docs/API_CONTRACT.md | The API between frontend and backend (endpoints, rules, allowed values, JSON examples) and the contracts between backend pieces (`choose_strategy`, tutor agent, verifier). Pydantic schemas stay the source of truth for field types. |
-| docs/ARCHITECTURE.md | How the system works: one tutor interface, the tutor agent and verification LLM, and what code owns (flow, method choice, history, final VERIFIED decision). |
 
 ## Final check before the pitch
 

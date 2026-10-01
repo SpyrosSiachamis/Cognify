@@ -8,7 +8,7 @@ A problem-solving tutor that learns how a student thinks and keeps testing wheth
 
 1. **No feature without an ID in SPEC.md.** New ideas go to the Parked list with a one-line reason, not into code.
 2. **Demo reliability beats features.** The Maria story (ball thrown up at 20 m/s) must run end to end after every change. Keep the offline path (F27) working.
-3. **Never use an AI answer without checking it.** Validate every model reply with Pydantic, retry once, then fall back safely. Calls have timeouts. A bad reply must never crash a screen (F25).
+3. **Never use an AI answer without checking it.** Validate every model reply with Pydantic, retry once, then fall back safely. The verification LLM checks every Master reply and follow-up; a rejected one is regenerated with the reason up to 2 times, then a safe fallback is sent. Code, not the model, decides VERIFIED. Calls have timeouts. A bad reply must never crash a screen (F25).
 4. **One AI doorway.** All model calls go through `backend/app/services/ai_gateway`. Swapping the model touches one file (F26).
 5. **No provider keys or provider calls in the frontend.** The frontend only talks to our backend.
 6. **Master never reveals the full answer.** One small teaching move per turn, never more than one new idea (F6, F13).
@@ -48,13 +48,12 @@ curl localhost:8000/health       # {"status":"ok"}
 frontend/            Next.js app
 backend/app/         FastAPI entry point, routes, Pydantic models
 backend/app/services/  ai_gateway, tutor, strategy_choice,
-                       followup, novelty, verification
+                       novelty, verification, history
 backend/prompts/     one text prompt per service
 backend/tests/
 supabase/            schema and seeded demo history
 demo/                Maria story, offline fallback, pitch notes
-docs/                LEVELS, REASONING, TEACHING, FOLLOWUPS, SCREENS, PROMPTS, DATA, DEMO,
-                     API_CONTRACT, ARCHITECTURE
+docs/                ARCHITECTURE, API_CONTRACT, DATA, PROMPTS, SCREENS, DEMO
 ```
 
 Not all of these exist yet; create them as the milestones need them.
