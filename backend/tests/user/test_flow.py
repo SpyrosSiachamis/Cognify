@@ -1,6 +1,9 @@
+import asyncio
 from uuid import UUID
 
+from app.main import app
 from app.seed.data import KINEMATICS_ID, MARIA_ID, NIKOS_ID
+from app.user.router import get_service
 from tests.user.conftest import BALL, ScriptedTutor
 
 
@@ -208,3 +211,130 @@ def test_rerunning_the_story_never_repeats_a_follow_up(make_rig):
         problems.append(rig.attempt(sid)["follow_up"]["problem"])
         rig.attempt(sid)
     assert len(set(problems)) == 3
+
+
+# ---- hardening: error shape, double clicks, slow agent ----
+
+
+def _is_contract_error(body: dict) -> bool:
+    return set(body) == {"error"} and set(body["error"]) == {"code", "message", "retryable"}
+
+
+def test_every_error_uses_the_contract_shape(make_rig):
+    rig = make_rig()
+    sid = rig.start(MARIA_ID)
+    cases = [
+        rig.client.post(f"/api/session/{sid}/attempt", json={"text": "x", "extra": 1}),  # unknown field
+        rig.client.post(f"/api/session/{sid}/attempt", json={}),  # missing field
+        rig.client.post("/api/session/not-a-uuid/attempt", json={"text": "x"}),  # bad path value
+        rig.client.post("/api/session", json={"problem": "a" * 2001, "student_id": str(MARIA_ID)}),
+        rig.client.get("/api/nope"),  # unknown route
+        rig.client.get("/api/session"),  # wrong method
+    ]
+    for r in cases:
+        assert r.status_code in (404, 405, 422), r.text
+        assert _is_contract_error(r.json()), r.text
+    assert cases[0].json()["error"]["code"] == "invalid_request"
+    assert cases[4].json()["error"]["code"] == "not_found"
+
+
+def test_validation_error_never_echoes_the_submitted_text(make_rig):
+    rig = make_rig()
+    secret = "my private answer " * 300  # over the length cap, so it is rejected
+    r = rig.client.post("/api/session", json={"problem": secret, "student_id": str(MARIA_ID)})
+    assert r.status_code == 422 and "private" not in r.text
+
+
+def test_unexpected_bug_becomes_a_contract_error_not_a_traceback(make_rig):
+    class Buggy(ScriptedTutor):
+        async def judge(self, request):
+            raise KeyError("a bug that is not an agent failure")
+
+    rig = make_rig(Buggy())
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)
+    rig.attempt(sid)
+    r = rig.client.post(f"/api/session/{sid}/attempt", json={"text": "answer"})
+    assert r.status_code == 503 and _is_contract_error(r.json())  # agent failures are retryable 503s
+
+
+def _post_concurrently(rig, requests):
+    """Send the requests at the same moment through the real ASGI app; returns the responses in order."""
+    import httpx
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await asyncio.gather(*(client.post(url, json=body) for url, body in requests))
+
+    return asyncio.run(run())
+
+
+def test_double_click_on_a_slow_agent_runs_the_turns_one_after_the_other(make_rig):
+    tutor = ScriptedTutor()
+    tutor.delay = 0.05
+    rig = make_rig(tutor)
+    sid = rig.start(MARIA_ID)
+    url = f"/api/session/{sid}/attempt"
+    first, second = _post_concurrently(rig, [(url, {"text": "idea one"}), (url, {"text": "idea two"})])
+    assert first.status_code == second.status_code == 200
+    # Without the lock both would read the first-thought state and the counters would be 1, not 2
+    assert sorted(r.json()["phase"] for r in (first, second)) == ["stress_test", "teach"]
+    session = rig.store.get_session(UUID(sid))
+    assert (session.teach_turns, session.hints_used) == (2, 1)
+    assert [a.phase for a in rig.store.list_attempts(UUID(sid))] == ["ask_first_thought", "teach"]
+
+
+def test_exit_waits_for_a_turn_that_is_still_running(make_rig):
+    tutor = ScriptedTutor()
+    tutor.delay = 0.05
+    rig = make_rig(tutor)
+    sid = rig.start(MARIA_ID)
+    attempt, leave = _post_concurrently(
+        rig, [(f"/api/session/{sid}/attempt", {"text": "idea"}), (f"/api/session/{sid}/exit", None)]
+    )
+    assert attempt.status_code == 200 and leave.status_code == 200
+    assert rig.store.get_session(UUID(sid)).status == "exited"
+    assert len(rig.store.list_attempts(UUID(sid))) == 1  # the turn that was running was not lost
+    assert rig.store.get_session(UUID(sid)).hidden_solution is not None
+
+
+def test_a_slow_agent_becomes_the_safe_fallback_not_a_hang(make_rig):
+    tutor = ScriptedTutor()
+    rig = make_rig(tutor, timeout=0.05)
+    sid = rig.start(MARIA_ID)
+    tutor.delay = 1.0  # from now on every agent call is slower than the limit
+    t = rig.attempt(sid)
+    assert t["phase"] == "ask_first_thought" and t["reply_check"]["approved"] is False
+    assert rig.store.list_attempts(UUID(sid)) == [] and rig.store.get_session(UUID(sid)).teach_turns == 0
+
+
+def test_a_slow_agent_at_session_start_is_a_retryable_error(make_rig):
+    tutor = ScriptedTutor()
+    tutor.delay = 1.0
+    rig = make_rig(tutor, timeout=0.05)
+    r = rig.client.post("/api/session", json={"problem": BALL, "student_id": str(MARIA_ID)})
+    assert r.status_code == 503 and r.json()["error"]["retryable"] is True
+
+
+def test_finished_sessions_do_not_keep_their_lock(make_rig):
+    rig = make_rig()
+    service = app.dependency_overrides[get_service]()
+    for _ in range(3):
+        sid = rig.start(MARIA_ID)
+        for _ in range(3):
+            rig.attempt(sid)
+    assert service._locks == {}
+
+
+def test_agent_failures_are_logged_not_swallowed(make_rig, caplog):
+    rig = make_rig(ScriptedTutor(fail={"teach"}))
+    sid = rig.start(MARIA_ID)
+    with caplog.at_level("WARNING", logger="app.user.service"):
+        rig.attempt(sid)
+    assert any("teach failed" in r.message and r.exc_info for r in caplog.records)
+
+
+def test_malformed_json_is_a_readable_contract_error(make_rig):
+    r = make_rig().client.post("/api/session", content="{bad json", headers={"content-type": "application/json"})
+    assert r.status_code == 422 and r.json()["error"]["message"].startswith("request body:")

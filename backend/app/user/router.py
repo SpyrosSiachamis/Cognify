@@ -44,8 +44,8 @@ async def attempt(session_id: UUID, body: StudentAttempt, service: Service) -> A
 
 
 @router.post("/session/{session_id}/exit")
-def exit_session(session_id: UUID, service: Service) -> ExitResponse:
-    return service.exit(session_id)
+async def exit_session(session_id: UUID, service: Service) -> ExitResponse:
+    return await service.exit(session_id)
 
 
 @router.get("/learner/{student_id}")
