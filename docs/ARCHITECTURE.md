@@ -132,6 +132,8 @@ Optional speedup: start the next phase's work while the verifier runs only if it
 
 ## Backend layout
 
+The backend is organised into six domain-oriented modules. Related functionality stays grouped inside a module, so team members can work within relatively independent boundaries.
+
 ```
 backend/app/
   common/          vocab: the shared glossary values
@@ -146,6 +148,10 @@ backend/app/
 backend/prompts/   tutor.txt, verifier_reply.txt, verifier_followup.txt,
                    verifier_student.txt, level1.txt
 ```
+
+The six modules are `common`, `history`, `tutor`, `verification`, `user` and `ai_gateway`.
+
+Prompts live in `backend/prompts/`: `tutor.txt`, `verifier_reply.txt`, `verifier_followup.txt`, `verifier_student.txt`, `level1.txt`.
 
 ## Decisions already made
 
