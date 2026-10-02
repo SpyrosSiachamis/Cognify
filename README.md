@@ -31,6 +31,8 @@ Open http://localhost:3000. The backend's API docs are at http://localhost:8000/
 After editing `.env` run `docker compose up -d backend`; a plain restart does not reload it. Never commit `.env` (it is gitignored) or print real keys.
 Offline mode always plays the saved ball story, whatever problem is pasted. It is a rehearsal, not a solver.
 
+Backend dependencies are pinned: `backend/requirements.txt` lists what we use and `backend/constraints.txt` pins every package to an exact version (the Docker build installs with it), so a rebuild cannot change behaviour. After pulling a change to either file, rebuild with `docker compose up --build backend`. The header of `constraints.txt` says how to update it. The frontend is pinned by `package-lock.json`.
+
 If a frontend command says `vitest: not found` (or another package is missing) after pulling, the container's `node_modules` is a Docker volume that predates the change. Renew it with `docker compose up --build -V frontend`.
 
 Without Docker: `cd backend && pip install -r requirements.txt`, export the variables from `.env`, then `uvicorn app.main:app --reload` (Python 3.13). Frontend: `cd frontend && npm install && npm run dev`.

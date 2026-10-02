@@ -6,8 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# constraints.txt pins every package to the exact version the tests were run with (see its header)
+COPY requirements.txt constraints.txt ./
+RUN pip install -r requirements.txt -c constraints.txt
 
 # Dev: source is bind-mounted by docker-compose, uvicorn reloads on change
 FROM base AS dev
