@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import hashlib
 import logging
 import re
@@ -38,7 +39,11 @@ MAX_TEACH_TURNS = 4  # move to the stress test after this many teaching turns re
 MAX_NOT_YET = 2  # the second NOT YET ends the session
 MAX_HINTS_FOR_VERIFIED = 2  # a correct answer after more hints than this is a lucky one (F16)
 MAX_FOLLOW_UP_TRIES = 3  # a repeated follow-up is regenerated this many times, then we give up
-TURN_TIMEOUT_SECONDS = 60.0  # one call to the agent; a slow turn becomes the safe fallback, not a hang
+# Time budgets for everything the agent does inside one request, kept under what the frontend waits
+# (120 s to start, 240 s per turn). A real turn chains a diagnosis, up to 3 write-and-check rounds and a
+# follow-up, so one short limit per call would throw away a slow turn that is still working.
+START_BUDGET_SECONDS = 100.0
+TURN_BUDGET_SECONDS = 200.0
 
 FIRST_THOUGHT_PROMPT = "Before I help, what would you try first? Even an incomplete idea is useful."
 EMPTY_PROBE = "What is one thing you notice in the problem?"
@@ -64,15 +69,30 @@ class SessionService:
     """Owns the Master flow: phases, hint counts, caps and the VERIFIED decision.
     The agent only reasons and writes; it never moves the session along."""
 
-    def __init__(self, tutor: TutorPort, store: HistoryStore, timeout: float = TURN_TIMEOUT_SECONDS) -> None:
+    def __init__(self, tutor: TutorPort, store: HistoryStore, timeout: float | None = None) -> None:
+        """`timeout` replaces both budgets (the tests use a short one)."""
         self._tutor = tutor
         self._store = store
-        self._timeout = timeout
+        self._start_budget = START_BUDGET_SECONDS if timeout is None else timeout
+        self._turn_budget = TURN_BUDGET_SECONDS if timeout is None else timeout
+        self._deadline: contextvars.ContextVar[float | None] = contextvars.ContextVar("deadline", default=None)
+        # Sessions whose gap is repaired but whose follow-up could not be made yet, with the gap to build it from
+        self._follow_up_owed: dict[UUID, GapType | None] = {}
         self._locks: dict[UUID, asyncio.Lock] = {}  # one turn at a time per session (a double click)
 
+    def _begin_budget(self, seconds: float) -> None:
+        self._deadline.set(asyncio.get_running_loop().time() + seconds)
+
     async def _ask[T](self, call: Awaitable[T]) -> T:
-        """Every call to the agent has a time limit; the caller turns any failure into a fallback."""
-        return await asyncio.wait_for(call, self._timeout)
+        """Every call to the agent runs inside the request's time budget; the caller turns any failure
+        into a fallback."""
+        deadline = self._deadline.get()
+        remaining = None if deadline is None else deadline - asyncio.get_running_loop().time()
+        if remaining is not None and remaining <= 0:
+            if asyncio.iscoroutine(call):
+                call.close()  # never started, so nothing to cancel
+            raise TimeoutError("the time budget for this request is used up")
+        return await asyncio.wait_for(call, remaining)
 
     def _lock(self, session_id: UUID) -> asyncio.Lock:
         return self._locks.setdefault(session_id, asyncio.Lock())
@@ -82,12 +102,14 @@ class SessionService:
         session = self._store.get_session(session_id)
         if session is None or session.status != "active":
             self._locks.pop(session_id, None)
+            self._follow_up_owed.pop(session_id, None)
 
     # ---- start and exit ----
 
     async def start(self, req: SessionStartRequest) -> SessionStartResponse:
         if self._store.get_student(req.student_id) is None:
             raise ApiError(404, "unknown_student", "No learner with that id.")
+        self._begin_budget(self._start_budget)
         try:
             setup = await self._ask(self._tutor.set_up(req.problem, req.subject))
         except Exception as exc:  # a bad agent reply must never become a 500 (F25)
@@ -134,6 +156,11 @@ class SessionService:
         try:
             async with self._lock(session_id):  # the state is read inside the lock, after any turn ahead of us
                 session = self._open(session_id)
+                self._begin_budget(self._turn_budget)
+                if session_id in self._follow_up_owed:
+                    # The gap was repaired but the follow-up failed last time. Do not teach again (that would
+                    # cost another hint for the model's failure): just make the follow-up.
+                    return await self._stress_test(session, self._follow_up_owed[session_id])
                 if not text.strip():
                     # Never explain instead of asking; nothing is saved and the agent is not called
                     return self._blank_turn(session)
@@ -206,6 +233,7 @@ class SessionService:
         # being right is still not VERIFIED), or after the turn cap.
         no_gap = out.main_gap is None and out.evidence == "sufficient"
         if out.gap_repaired or no_gap or turns >= MAX_TEACH_TURNS:
+            self._follow_up_owed[session.id] = out.main_gap  # cleared once the follow-up exists
             return await self._stress_test(session, out.main_gap)
         return TutorTurn(
             session_id=session.id,
@@ -241,6 +269,7 @@ class SessionService:
         )
         session.phase = "stress_test"
         self._store.update_session(session)
+        self._follow_up_owed.pop(session.id, None)
         return TutorTurn(
             session_id=session.id,
             phase="stress_test",

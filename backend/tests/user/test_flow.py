@@ -349,3 +349,101 @@ def test_blank_text_in_the_stress_test_shows_the_same_problem_again(make_rig):
     assert again["phase"] == "stress_test" and again["follow_up"]["problem"] == problem
     assert again["hints_used"] == 1 and len(rig.store.list_attempts(UUID(sid))) == 2  # nothing was saved or counted
     assert rig.attempt(sid, "v^2 = u^2 - 2gh")["verdict"]["result"] == "VERIFIED"  # the story carries on
+
+
+# ---- one time budget per request ----
+
+
+def test_a_slow_turn_that_fits_the_budget_is_not_cut_off(make_rig):
+    tutor = ScriptedTutor()
+    tutor.delay = 0.2  # slow, but well inside the budget
+    rig = make_rig(tutor, timeout=2.0)
+    sid = rig.start(MARIA_ID)
+    assert rig.attempt(sid)["reply_check"]["approved"] is True
+
+
+def test_the_budget_is_shared_by_every_call_in_a_request(make_rig):
+    # Every follow-up draft repeats a problem the student saw, so the service keeps asking. Each ask is quick,
+    # but together they pass the budget, so the request must stop instead of asking three full times.
+    import time
+
+    tutor = ScriptedTutor(repair_after=1, follow_up_texts=[BALL, BALL, BALL])
+    rig = make_rig(tutor, timeout=0.25)
+    sid = rig.start(MARIA_ID)
+    tutor.delay = 0.1
+    started = time.monotonic()
+    r = rig.client.post(f"/api/session/{sid}/attempt", json={"text": "idea"})
+    assert r.status_code == 503 and r.json()["error"]["retryable"] is True
+    assert time.monotonic() - started < 0.6
+    assert len(tutor.follow_up_requests) < 3  # the budget ran out before the third ask
+
+
+def test_default_budgets_fit_inside_what_the_frontend_waits(make_rig):
+    from app.user import service
+
+    assert 60 < service.START_BUDGET_SECONDS <= 120  # the frontend gives a session start 120 s
+    assert 60 < service.TURN_BUDGET_SECONDS <= 240  # and a turn 240 s
+
+
+# ---- a failed follow-up must not cost the student another hint ----
+
+
+def _owed(rig, sid):
+    return rig.service._follow_up_owed.get(UUID(sid), "none")
+
+
+def test_a_failed_follow_up_is_retried_without_teaching_again(make_rig):
+    tutor = ScriptedTutor(fail_once={"follow_up"})
+    rig = make_rig(tutor)
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)  # teaching turn 1
+    failed = rig.client.post(f"/api/session/{sid}/attempt", json={"text": "I sketched it"})  # repaired; follow-up fails
+    assert failed.status_code == 503 and failed.json()["error"]["retryable"] is True
+    session = rig.store.get_session(UUID(sid))
+    assert (session.hints_used, session.teach_turns, session.phase) == (1, 2, "teach")
+    assert _owed(rig, sid) == "recognition"
+    teaches_before = len(tutor.teach_requests)
+
+    again = rig.attempt(sid, "I sketched it")  # the retry
+    assert again["phase"] == "stress_test" and again["hints_used"] == 1  # not 2
+    assert len(tutor.teach_requests) == teaches_before  # no new teaching call
+    assert len(rig.store.list_attempts(UUID(sid))) == 2  # no extra attempt saved
+    assert _owed(rig, sid) == "none"
+    assert rig.attempt(sid, "v^2 = u^2 - 2gh")["verdict"]["result"] == "VERIFIED"  # one hint is still independent
+
+
+def test_a_blank_retry_also_makes_the_follow_up(make_rig):
+    rig = make_rig(ScriptedTutor(fail_once={"follow_up"}))
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)
+    assert rig.client.post(f"/api/session/{sid}/attempt", json={"text": "I sketched it"}).status_code == 503
+    assert rig.attempt(sid, "   ")["phase"] == "stress_test"
+
+
+def test_the_follow_up_can_fail_more_than_once(make_rig):
+    tutor = ScriptedTutor(fail_once={"follow_up"})
+    rig = make_rig(tutor)
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)
+    for _ in range(2):
+        tutor.fail_once.add("follow_up")
+        assert rig.client.post(f"/api/session/{sid}/attempt", json={"text": "more"}).status_code == 503
+        assert rig.store.get_session(UUID(sid)).hints_used == 1  # never grows while the follow-up is owed
+    assert rig.attempt(sid, "more")["phase"] == "stress_test"
+
+
+def test_leaving_while_a_follow_up_is_owed_cleans_up(make_rig):
+    rig = make_rig(ScriptedTutor(fail_once={"follow_up"}))
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)
+    rig.client.post(f"/api/session/{sid}/attempt", json={"text": "x"})
+    assert _owed(rig, sid) != "none"
+    assert rig.client.post(f"/api/session/{sid}/exit").status_code == 200
+    assert _owed(rig, sid) == "none" and UUID(sid) not in rig.service._locks
+
+
+def test_a_teaching_turn_that_fails_leaves_nothing_owed(make_rig):
+    rig = make_rig(ScriptedTutor(fail_once={"teach"}))
+    sid = rig.start(MARIA_ID)
+    rig.attempt(sid)  # the teaching call fails once: safe fallback
+    assert _owed(rig, sid) == "none"
