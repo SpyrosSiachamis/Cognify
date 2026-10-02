@@ -21,12 +21,13 @@ BALL = (
 class ScriptedTutor(StubTutor):
     """The stub, with repair and judgement controllable, failures injectable and calls recorded."""
 
-    def __init__(self, repair_after=2, correct=True, follow_up_texts=None, fail=()):
+    def __init__(self, repair_after=2, correct=True, follow_up_texts=None, fail=(), fail_once=()):
         super().__init__()
         self.repair_after = repair_after
         self.correct = correct
         self.follow_up_texts = list(follow_up_texts or [])
         self.fail = set(fail)
+        self.fail_once = set(fail_once)  # fail the first call only, then work
         self.delay = 0.0  # seconds every agent call takes, to make requests overlap
         self.calls = 0
         self.teach_requests = []
@@ -36,6 +37,9 @@ class ScriptedTutor(StubTutor):
         self.calls += 1
         if name in self.fail:
             raise RuntimeError(f"{name} failed")
+        if name in self.fail_once:
+            self.fail_once.discard(name)
+            raise RuntimeError(f"{name} failed once")
 
     async def set_up(self, problem, subject):
         self._enter("set_up")
@@ -52,6 +56,7 @@ class ScriptedTutor(StubTutor):
 
     async def follow_up(self, request):
         self._enter("follow_up")
+        await asyncio.sleep(self.delay)
         self.follow_up_requests.append(request)
         result = await super().follow_up(request)
         text = self.follow_up_texts.pop(0) if self.follow_up_texts else None
@@ -72,6 +77,7 @@ class Rig:
         seed_store(self.store)
         self.tutor = tutor or ScriptedTutor()
         service = SessionService(self.tutor, self.store, **({} if timeout is None else {"timeout": timeout}))
+        self.service = service
         app.dependency_overrides[get_service] = lambda: service
         self.client = TestClient(app)
 
