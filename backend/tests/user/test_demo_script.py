@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 import uvicorn
 
+from app.history import InMemoryHistory
 from app.main import app
+from app.seed import seed_store
+from app.user.router import get_service
+from app.user.service import SessionService
+from tests.user.conftest import ScriptedTutor
 
 SCRIPT = Path(__file__).resolve().parents[3] / "demo" / "play_story.py"
 
@@ -26,9 +31,14 @@ def load_script():
     return module
 
 
-@pytest.fixture
-def live_url():
+def _serve(tutor=None):
+    """A real server on a real port. With a tutor, the app serves that tutor on a fresh seeded history."""
     app.dependency_overrides.clear()
+    if tutor is not None:
+        store = InMemoryHistory()
+        seed_store(store)
+        service = SessionService(tutor, store)
+        app.dependency_overrides[get_service] = lambda: service
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -36,10 +46,33 @@ def live_url():
     while not server.started and time.time() < deadline:
         time.sleep(0.02)
     assert server.started, "the test server did not start"
-    port = server.servers[0].sockets[0].getsockname()[1]
-    yield f"http://127.0.0.1:{port}"
+    return server, thread, f"http://127.0.0.1:{server.servers[0].sockets[0].getsockname()[1]}"
+
+
+@pytest.fixture
+def live_url():
+    server, thread, url = _serve()
+    yield url
     server.should_exit = True
     thread.join(timeout=10)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def serve_tutor():
+    """serve_tutor(tutor) -> url of a server that uses that tutor."""
+    started = []
+
+    def start(tutor):
+        server, thread, url = _serve(tutor)
+        started.append((server, thread))
+        return url
+
+    yield start
+    for server, thread in started:
+        server.should_exit = True
+        thread.join(timeout=10)
+    app.dependency_overrides.clear()
 
 
 def test_the_story_script_passes_against_the_app(live_url, capsys):
@@ -59,3 +92,62 @@ def test_the_script_refuses_a_remote_address(capsys):
 
 def test_the_script_reports_an_unreachable_backend(capsys):
     assert load_script().main(["--base-url", "http://127.0.0.1:9"]) == 2
+
+
+# ---- the real model writes its own follow-up, so the verdict can be either one ----
+
+
+def test_shape_only_reports_which_verdict_it_got(serve_tutor, capsys):
+    url = serve_tutor(ScriptedTutor(correct=False))
+    code = load_script().main(["--base-url", url, "--shape-only", "--student", "maria"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "verdict: NOT YET, session continues" in out
+    assert "strategy counts moved by one use, and one success only if VERIFIED" in out
+
+
+def test_the_exact_story_still_demands_verified(serve_tutor, capsys):
+    url = serve_tutor(ScriptedTutor(correct=False))
+    assert load_script().main(["--base-url", url, "--student", "maria"]) == 1
+    assert "FAIL  VERIFIED, decided by code" in capsys.readouterr().out
+
+
+def test_a_retryable_503_is_retried_and_costs_no_hint(serve_tutor, capsys):
+    url = serve_tutor(ScriptedTutor(fail_once={"follow_up"}))
+    code = load_script().main(["--base-url", url, "--shape-only", "--student", "maria"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "retryable), trying again with the same answer" in out
+    assert "PASS  a retried request did not cost an extra hint" in out
+
+
+def test_the_script_notices_when_a_retry_costs_an_extra_hint(serve_tutor, capsys, monkeypatch):
+    # Break the backend fix on purpose: forget that a follow-up is owed, so the retry teaches again
+    class NeverOwed(dict):
+        def __contains__(self, key):
+            return False
+
+    original = SessionService.__init__
+
+    def broken_init(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        self._follow_up_owed = NeverOwed()
+
+    # A turn that moves on is never counted as help, so also count the failed one as a delivered move;
+    # otherwise teaching again would be free and the script would have nothing to notice
+    original_stress = SessionService._stress_test
+
+    async def broken_stress(self, session, main_gap):
+        try:
+            return await original_stress(self, session, main_gap)
+        except Exception:
+            session.last_reply_taught = True
+            self._store.update_session(session)
+            raise
+
+    monkeypatch.setattr(SessionService, "__init__", broken_init)
+    monkeypatch.setattr(SessionService, "_stress_test", broken_stress)
+    url = serve_tutor(ScriptedTutor(fail_once={"follow_up"}))
+    code = load_script().main(["--base-url", url, "--shape-only", "--student", "maria"])
+    out = capsys.readouterr().out
+    assert code == 1 and "FAIL  a retried request did not cost an extra hint" in out, out

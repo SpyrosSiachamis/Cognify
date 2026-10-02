@@ -39,14 +39,33 @@ Cognify is a problem-solving tutor that learns how a student thinks. Most tutors
 
 ## Offline switch (F27)
 
-One backend setting returns the saved Maria story with the same response shapes, so the frontend cannot tell. Set it, run `docker compose up -d backend`, and rehearse once. Plain restart does not reload `.env`.
+Set `DEMO_MODE=offline` in `.env`, then run `docker compose up -d backend` (a plain restart does not reload `.env`). The backend then plays the saved Maria and Nikos story with the same response shapes, so the frontend cannot tell. It needs no network, no AWS credentials and no model, and it works even when `TUTOR_MODEL_ID` is still set. The backend log says `tutor: OFFLINE DEMO` on start. To go back, empty `DEMO_MODE` and run the same command.
+
+- Whatever problem is pasted, the saved ball story is what plays. It is a rehearsal, not a solver.
+- A mistyped value (for example `ofline`) stops the backend at start, so the real tutor never runs by accident.
+- Check it once before the demo: `python demo/play_story.py` plays the whole story and prints PASS or FAIL for every step.
+
+## Run the backend for the live demo
+
+The normal `docker compose up` runs the backend with `uvicorn --reload` and the source mounted, so saving any backend file restarts it and every open session and the in-memory history are lost (the student sees "This session was lost"). For the demo use the production override, which copies the code into the image and does not reload:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build backend
+docker compose ps                       # backend shows (healthy)
+python demo/play_story.py               # plays the whole story and checks every step
+```
+
+- One worker only: the in-memory history store needs exactly one process.
+- To reset the seeded history between rehearsals: `docker compose -f docker-compose.yml -f docker-compose.demo.yml restart backend`.
+- To go back to development, use the plain file: `docker compose up -d --build backend`.
+- Do not run `docker compose config` on a shared screen: it prints the values from `.env`.
 
 ## Pre-flight checklist
 
-- [ ] `docker compose up --build` is running; `curl localhost:8000/health` is OK
+- [ ] Backend started with the demo override (`docker-compose.demo.yml`), `docker compose ps` shows it healthy, and `curl localhost:8000/health` is OK
 - [ ] Seeded history reloaded (the one-step reset in `DATA.md`); Maria is fragile at 7 of 9
 - [ ] Full Maria story run once, end to end
-- [ ] Offline switch tested, then set back
+- [ ] Offline switch tested (`DEMO_MODE=offline`, then `python demo/play_story.py`), then set back
 - [ ] The Nikos comparison works
 - [ ] Experiment demo flag tested
 - [ ] Second device opens the public address (F28)
