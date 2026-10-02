@@ -528,3 +528,5 @@ h1 em,h2 em{animation:none;background-position:0 0;filter:none;text-shadow:0 2px
 body.dim .deep{visibility:visible;transition:opacity 1.4s ease,visibility 0s}
 .seal-wrap{visibility:hidden;transition:opacity .6s,visibility 0s .6s}
 .seal-wrap.show{visibility:visible;transition:opacity .6s,visibility 0s}
+/* Low-power mode on weak devices (lib/room.ts): the candle and the beam hold their current light. */
+.stage[data-power="low"] .vig,.stage[data-power="low"] .beam{animation-play-state:paused}
