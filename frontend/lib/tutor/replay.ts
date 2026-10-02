@@ -23,6 +23,7 @@ export type Recording = {
   title: string;
   problem: string;
   label: string;
+  note?: string; // a known issue the session shows, stated on the replay list
   setUpMs: number;
   setUp: Beat[];
   start: SessionStartResponse;
@@ -35,14 +36,16 @@ const MARIA = "16e82ef2-adee-4671-8393-c6b50ac91672";
 const FIRST_THOUGHT = "Before I help, what would you try first? Even an incomplete idea is useful.";
 const FRESH = "Now I am removing the support. New problem, same underlying idea, different surface.";
 
-const trace = (b: string, s: string, k: LogKind = "ai"): Beat => ({ log: { b: `Trace · ${b}`, s, k } });
-const readToast: Beat = { toast: { msg: "Cognify read your reasoning", label: "See it", tab: "reasoning" } };
+export const trace = (b: string, s: string, k: LogKind = "ai"): Beat => ({ log: { b: `Trace · ${b}`, s, k } });
+export const readToast: Beat = { toast: { msg: "Cognify read your reasoning", label: "See it", tab: "reasoning" } };
 /** A reading the live turn computed but did not send (it went straight to the fresh problem). */
-const reading = (d: DiagnosisView): Beat[] => [
+export const reading = (d: DiagnosisView): Beat[] => [
   { diagnosis: d },
   { fresh: true },
   { log: { b: "Read your reasoning", s: `No gap shown in this answer (confidence ${d.confidence})`, k: "ai" } },
 ];
+/** A known issue, said plainly at the moment the session shows it. */
+const knownIssue = (s: string): Beat => ({ log: { b: "Known issue · whole items are not rounded", s, k: "" } });
 const approved = (summary: string): TutorTurn["reply_check"] => ({ approved: true, outcome: "approved", summary });
 
 // ---- the demo learner over the day: seeded history first, then each session's own result ----
@@ -394,7 +397,214 @@ const rectangle: Recording = {
   },
 };
 
-export const RECORDINGS: Record<string, Recording> = { books, rectangle };
+// ---- session acac5a33: school percentages (three chained percentages; shows the fractional-items known issue) ----
+
+const SCHOOL_ID = "acac5a33-889b-4294-84ba-094eea7e0cd2";
+const SCHOOL_PROBLEM =
+  "A school has 600 students. 15% are absent on Monday. Of the students who are present, 40% participate in a sports event. Of the remaining present students, 25% participate in a music activity.";
+const WHOLE_ITEMS =
+  "Cognify does not round or reject fractional counts of whole items, so “76.5 students” and “100.8 books” pass as answers. " +
+  "Easily fixable (a whole-number check on counted quantities in the set-up and fresh-problem checks), but not prioritised because of the hackathon deadline.";
+const LIBRARY_WORK =
+  "I’d first calculate how many books are lost during the year. 10% of 800 = 0.10 × 800 = 80 books lost.\n\nThat leaves 800 − 80 = 720 books remaining.\n\nNext, I’d calculate how many of those 720 books are placed on the special display. 30% of 720 = 0.30 × 720 = 216 books on display.\n\nSo there are 720 − 216 = 504 books that are not on display.\n\nFinally, I’d calculate 20% of those 504 books for repair. 0.20 × 504 = 100.8 books.\n\nThat gives 504 − 100.8 = 403.2 books not chosen for repair.";
+
+const percentagesVerified: LearnerConcept = {
+  concept_id: "2a19acaa-fddd-4be1-903d-9d6d05e651de",
+  name: "Percentage calculations",
+  state: "verified",
+  evidence: [
+    "The student explicitly carries out each sequential percentage calculation on the updated quantity (e.g., '30% of 720', '20% of 504') and arrives at the final result of 100.8 books for repair.",
+  ],
+};
+const workedExampleForProcedure = (uses: number): StrategyRow => ({ gap: "procedure", method: "worked_example", uses, independent_successes: uses, experiments: 0 });
+
+const school: Recording = {
+  id: "school",
+  title: "School percentages (three steps)",
+  problem: SCHOOL_PROBLEM,
+  label: "Replay of recorded session acac5a33 (2 Oct 2026). Every reply is what Cognify sent live; no backend or model is called.",
+  note: `Known issue: ${WHOLE_ITEMS}`,
+  setUpMs: 1006,
+  setUp: [
+    trace("hidden solution written", "The set-up model solved the problem first: “76.5 students” in the music activity. Kept on the backend, never shown. 1.0 s"),
+    knownIssue(WHOLE_ITEMS),
+    trace("concept", "Percentage calculations · untested for this learner"),
+  ],
+  start: { session_id: SCHOOL_ID, phase: "ask_first_thought", message: FIRST_THOUGHT, hints_used: 0 },
+  steps: [
+    {
+      student: "I would first calculate how many students are absent on Monday.",
+      ms: 2026 + 997 + 807,
+      response: {
+        session_id: SCHOOL_ID,
+        phase: "teach",
+        message:
+          "Let’s look at a similar problem to practice the next step:\n*A library has 400 books. 10% are checked out on Tuesday. Of the books still in the library, 30% are placed on display. How many books are still in the library after the 10% are checked out?*\n\nYou’d calculate: 10% of 400 = 0.10 × 400 = 40 books checked out, then 400 – 40 = 360 books still in the library.\n\nHow would you adapt this to find the number of present students in your problem?",
+        diagnosis: {
+          steps: [
+            { role: "choose_method", status: "correct", quote: "I would first calculate how many students are absent on Monday." },
+            { role: "set_up", status: "missing", quote: null },
+            { role: "substitute", status: "missing", quote: null },
+            { role: "compute", status: "missing", quote: null },
+            { role: "interpret", status: "missing", quote: null },
+          ],
+          main_gap: "procedure",
+          alternatives: [
+            { gap: "representation", confidence: "low" },
+            { gap: "strategy_choice", confidence: "medium" },
+          ],
+          confidence: "medium",
+        },
+        method: { name: "worked_example", mode: "cold_start", experiment: false, reason: "No history yet for procedure gaps, so starting with worked example." },
+        hints_used: 0,
+        reply_check: approved(
+          "The reply provides a worked example of a different problem, leaving the student to adapt the reasoning to their own problem, which fully aligns with the worked_example method.",
+        ),
+      },
+      backstage: [
+        trace("claim dropped", "The model credited “identify quantities” with the problem's own sentence (“A school has 600 students. 15% are absent on Monday.”). No quote, no claim."),
+        trace("gap located", "A plan with no working yet: the first calculation is the step not done. Gap: procedure (medium). Alternatives: strategy choice (medium), representation (low)."),
+        trace("method chosen by code", "choose_strategy · cold start: no history yet for this learner's procedure gaps, so a worked example. Recorded."),
+        trace("reply checked", "Approved: a worked example of a different problem (a library), so the student still does their own. Answer withheld. 2.0 s read · 1.0 s draft · 0.8 s check"),
+        trace("hint counted", "A teaching move counts as one hint: it decides later whether a correct answer is independent."),
+      ],
+    },
+    {
+      student: "So I’d first find 15% of the 600 students: 0.15 × 600 = 90 students absent. Then I’d subtract those 90 from the total: 600 − 90 = 510 students present.",
+      ms: 2363 + 652 + 720,
+      response: {
+        session_id: SCHOOL_ID,
+        phase: "teach",
+        message: "Great job calculating the number of present students! Now, how would you find out how many of these 510 students participate in the sports event?",
+        diagnosis: {
+          steps: [
+            { role: "identify_quantities", status: "correct", quote: "15% of the 600 students" },
+            { role: "choose_method", status: "correct", quote: "find 15% of the 600 students" },
+            { role: "substitute", status: "correct", quote: "0.15 × 600" },
+            { role: "compute", status: "correct", quote: "0.15 × 600 = 90 students absent" },
+            { role: "set_up", status: "correct", quote: "subtract those 90 from the total: 600 − 90" },
+            { role: "compute", status: "correct", quote: "600 − 90 = 510 students present" },
+          ],
+          main_gap: null,
+          alternatives: [],
+          confidence: "high",
+        },
+        method: null,
+        hints_used: 1,
+        reply_check: approved("The reply is a probe question focused on the student's next step, with no hint, leak, or heavy hint."),
+      },
+      backstage: [
+        trace("gap repaired", "The worked example transferred: the student's own correct work demonstrates the step, with no wrong step."),
+        trace("arithmetic checked by code", "0.15 × 600 = 90 and 600 − 90 = 510 hold. Demonstrated: 90, 510. Next target: 40% of 510 (hidden)."),
+        trace("reply checked", "Approved: asks about the next step only. 2.4 s read · 0.7 s draft · 0.7 s check"),
+        readToast,
+      ],
+    },
+    {
+      student: "I’d find 40% of the 510 students who are present. So, 0.40 × 510 = 204 students participate in the sports event.",
+      ms: 2589 + 720 + 706,
+      response: {
+        session_id: SCHOOL_ID,
+        phase: "teach",
+        message: "Great! You’ve correctly found how many students participate in the sports event. What would you do next with the remaining present students?",
+        diagnosis: {
+          steps: [
+            { role: "identify_quantities", status: "correct", quote: "the 510 students who are present" },
+            { role: "choose_method", status: "correct", quote: "find 40% of the 510 students" },
+            { role: "set_up", status: "correct", quote: "0.40 × 510" },
+            { role: "compute", status: "correct", quote: "0.40 × 510 = 204" },
+            { role: "interpret", status: "correct", quote: "204 students participate in the sports event" },
+          ],
+          main_gap: null,
+          alternatives: [],
+          confidence: "high",
+        },
+        method: null,
+        hints_used: 1,
+        reply_check: approved("The reply is a probe question that builds on the student's correct step without giving away the next step or leaking the answer."),
+      },
+      backstage: [
+        trace("arithmetic checked by code", "0.40 × 510 = 204 holds, applied to the present students (not the 600). Demonstrated: 204. Next target: 510 − 204 = 306 (hidden)."),
+        trace("reply checked", "Approved. 2.6 s read · 0.7 s draft · 0.7 s check"),
+        readToast,
+      ],
+    },
+    {
+      student:
+        "I’d subtract the 204 students in the sports event from the 510 present students, giving 306 students remaining. Then I’d calculate 25% of those 306 students: 0.25 × 306 = 76.5, so 76.5 students would participate in the music activity. That leaves 306 − 76.5 = 229.5 students who participate in neither activity.",
+      ms: 2280 + 2183 + 844 + 1671 + 566,
+      response: {
+        session_id: SCHOOL_ID,
+        phase: "stress_test",
+        message: FRESH,
+        follow_up: {
+          problem: "A library has 800 books. During a year, 10% of the books are lost. Of the remaining books, 30% are placed on a special display. From the books not on display, 20% are chosen for repair.",
+        },
+        hints_used: 1,
+        reply_check: approved("The follow-up problem successfully changes the context while preserving the concept invariant and target step."),
+      },
+      backstage: [
+        ...reading({
+          steps: [
+            { role: "identify_quantities", status: "correct", quote: "the 204 students in the sports event from the 510 present students, giving 306 students remaining" },
+            { role: "choose_method", status: "correct", quote: "calculate 25% of those 306 students" },
+            { role: "compute", status: "correct", quote: "0.25 × 306 = 76.5" },
+            {
+              role: "interpret",
+              status: "correct",
+              quote: "so 76.5 students would participate in the music activity. That leaves 306 − 76.5 = 229.5 students who participate in neither activity.",
+            },
+          ],
+          main_gap: null,
+          alternatives: [],
+          confidence: "high",
+        }),
+        trace("problem resolved", "Every calculation holds: 306, 76.5, 229.5 demonstrated. Solved with one hint along the way, so not verified yet."),
+        knownIssue("“76.5 students” and “229.5 students” were accepted: the arithmetic is true, but a count of students should be whole. Fixable with a whole-number check; not prioritised for the deadline."),
+        trace("fresh problem 1 rejected", "Checker: its answer was 380.8 books, “change the numbers to ensure whole-number results”. Never shown. 2.2 s write · 0.8 s check", ""),
+        trace("fresh problem 2 approved", "Same idea (each percentage of the updated amount), new context (a library), tests the set-up step. 1.7 s write · 0.6 s check"),
+        knownIssue("The approved fresh problem's own answer is 100.8 books: the checker caught fractional books once and missed them here. A code check would make this consistent."),
+        readToast,
+      ],
+    },
+    {
+      student: LIBRARY_WORK,
+      ms: 5049,
+      response: {
+        session_id: SCHOOL_ID,
+        phase: "verdict",
+        session_over: true,
+        message: "You solved it on your own.",
+        verdict: {
+          result: "VERIFIED",
+          evidence: percentagesVerified.evidence[0],
+          independent: true,
+          remaining_gap: null,
+          changes: {
+            concept: { concept_id: percentagesVerified.concept_id, name: percentagesVerified.name, before: "untested", after: "verified" },
+            strategy: { gap: "procedure", method: "worked_example", before: { uses: 0, independent_successes: 0 }, after: { uses: 1, independent_successes: 1 } },
+          },
+        },
+      },
+      backstage: [
+        trace("judge's evidence", "Correct: yes (100.8 books, matching the rubric) · own work: yes (each percentage on the updated amount: “30% of 720”, “20% of 504”) · reasoning: strong. 5.0 s"),
+        trace("code decides", "verified = correct AND independent (own work, 1 hint ≤ 2) → VERIFIED. The model never says VERIFIED."),
+        trace("method credited", "Worked example for procedure gaps: 0 uses → 1 use, 1 independent success. The first observed evidence for this learner's procedure gaps.", "ok"),
+        knownIssue("The verdict rests on the right method; “100.8 books” as a count is the same rounding gap, not the student's error."),
+      ],
+    },
+  ],
+  solution: {
+    result: "76.5 students",
+    steps: ["15% of 600 = 90 absent; 600 − 90 = 510 present.", "40% of 510 = 204 in sports; 510 − 204 = 306 remain.", "25% of 306 = 76.5 in music."],
+  },
+  views: {
+    before: views([kinematics, division, quadraticsAfter], rows([10, 8])),
+    after: views([kinematics, division, quadraticsAfter, percentagesVerified], [workedExampleForProcedure(1), ...rows([10, 8])]),
+  },
+};
+
+export const RECORDINGS: Record<string, Recording> = { books, rectangle, school };
 
 // ---- playing a recording through the real screens ----
 

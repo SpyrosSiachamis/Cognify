@@ -51,6 +51,12 @@ export type AttemptResponse = TutorTurn | VerdictTurn;
 export const isVerdictTurn = (r: AttemptResponse): r is VerdictTurn => r.phase === "verdict" && "verdict" in r;
 
 export type Solution = { result: string; steps: string[] };
+
+// ---- development session trace: GET /api/session/{id}/debug-trace (404 unless DEBUG_TRACE is on) ----
+
+// Read only to save a session as a replay (lib/tutor/recorder.ts); its payloads are typed loosely and read defensively.
+export type TraceEventView = { event_type: string; turn: number; sequence: number; payload: Record<string, unknown> };
+export type SessionTraceView = { session_id: string; events: TraceEventView[] };
 export type ExitResponse = { phase: "exited"; solution: Solution; evidence_recorded: boolean };
 
 // ---- errors ----
@@ -139,6 +145,9 @@ export const checks = {
       (v.phase !== "stress_test" || isObj(v.follow_up))
     );
   },
+  trace: (v: unknown): v is SessionTraceView =>
+    isObj(v) && isStr(v.session_id) && Array.isArray(v.events) &&
+    v.events.every((e) => isObj(e) && isStr(e.event_type) && isNum(e.turn) && isNum(e.sequence) && isObj(e.payload)),
   exit: (v: unknown): v is ExitResponse => isObj(v) && v.phase === "exited" && isObj(v.solution) && isStr(v.solution.result) && Array.isArray(v.solution.steps),
   learner: (v: unknown): v is LearnerView =>
     isObj(v) && isStr(v.display_name) && typeof v.is_seeded === "boolean" && Array.isArray(v.concepts) &&
@@ -158,4 +167,5 @@ export const api = {
   attempt: (sessionId: string, text: string, signal?: AbortSignal) =>
     call(`/api/session/${sessionId}/attempt`, TIMEOUT_MS.turn, checks.attempt, post({ text }), signal),
   exit: (sessionId: string) => call(`/api/session/${sessionId}/exit`, TIMEOUT_MS.read, checks.exit, post()),
+  debugTrace: (sessionId: string) => call(`/api/session/${sessionId}/debug-trace`, TIMEOUT_MS.read, checks.trace),
 };

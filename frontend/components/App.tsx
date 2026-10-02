@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { ApiError } from "@/lib/api";
 import { loadViews } from "@/lib/backend";
-import { backendTutor } from "@/lib/tutor/backend";
+import { buildRecording, createRecorder, saveRecording } from "@/lib/tutor/recorder";
 import { replay, type Recording } from "@/lib/tutor/replay";
 import { AppProvider, useActions, useAppSelector } from "./AppProvider";
 import { Home } from "./Home";
@@ -23,7 +23,12 @@ function Shell({ recording }: { recording?: Recording }) {
   const { dispatch, getState } = useActions();
   // A replay plays a recorded session through the same screens; nothing calls the backend.
   const player = useMemo(() => (recording ? replay(recording) : null), [recording]);
-  const tutor = player?.tutor ?? backendTutor;
+  // The live tutor records each session, so a finished one can be saved as a replay (lib/tutor/recorder.ts).
+  const recorder = useMemo(() => createRecorder(() => {
+    const views = getState().views;
+    return views.status === "ok" ? views.data : null;
+  }), [getState]);
+  const tutor = player?.tutor ?? recorder.tutor;
   const load = player?.loadViews ?? loadViews;
 
   // What the backend knows about the learner. Loading and failure are shown as they are; nothing is filled in.
@@ -83,6 +88,14 @@ function Shell({ recording }: { recording?: Recording }) {
     dispatch({ type: "startSession", now: Date.now() });
   }, [dispatch, getState]);
   // From the seal to the result screen.
+  // Save the session just played as a replay in this browser. Returns it, and whether the browser stored it.
+  const saveReplay = useCallback(async () => {
+    const draft = recorder.current();
+    if (!draft) throw new Error("There is no recorded session to save.");
+    const views = getState().views;
+    const recording = await buildRecording(draft, views.status === "ok" ? views.data : null);
+    return { recording, stored: saveRecording(recording) };
+  }, [recorder, getState]);
   const showResult = useCallback(() => {
     dispatch({ type: "seal", open: false });
     dispatch({ type: "view", view: "result" });
@@ -96,7 +109,7 @@ function Shell({ recording }: { recording?: Recording }) {
       <main className="wrap" id="main">
         {view === "home" && <Home onStart={start} onRetryViews={refreshViews} />}
         {view === "session" && <SessionView tutor={tutor} onNewProblem={newProblem} />}
-        {view === "result" && <ResultView onNewProblem={newProblem} />}
+        {view === "result" && <ResultView onNewProblem={newProblem} onSaveReplay={player ? undefined : saveReplay} />}
       </main>
       <ProgressDrawer onRefresh={refreshViews} />
       <Toast />

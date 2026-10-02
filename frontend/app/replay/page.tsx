@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SavedReplays } from "@/components/SavedReplays";
 import { RECORDINGS } from "@/lib/tutor/replay";
 
 /** /replay: the recorded sessions that can be replayed. */
@@ -14,9 +15,11 @@ export default function ReplayIndex() {
             <Link key={r.id} href={`/replay/${r.id}`} className="paper" style={{ display: "block" }}>
               <span className="kicker">{r.title}</span>
               <p style={{ margin: "6px 0 0" }}>{r.problem}</p>
+              {r.note && <p className="muted" style={{ margin: "8px 0 0", fontSize: 14 }}>{r.note}</p>}
             </Link>
           ))}
         </div>
+        <SavedReplays />
       </section>
     </main>
   );

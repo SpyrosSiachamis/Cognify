@@ -75,22 +75,44 @@ export function mapAttempt(reply: AttemptResponse): Turn {
   return isVerdictTurn(reply) ? verdictTurn(reply) : tutorTurn(reply);
 }
 
+/** What a recorder sees of a live session (lib/tutor/recorder.ts): each backend response as it arrived, and how long
+    it took. It only watches; the screens get the same turns either way. */
+export type SessionObserver = {
+  started?: (problem: string, start: SessionStartResponse, ms: number) => void;
+  answered?: (text: string, reply: AttemptResponse, ms: number) => void;
+  exited?: (solution: Solution) => void;
+};
+
 class BackendSession implements MasterSession {
-  constructor(private readonly id: string) {}
+  constructor(
+    private readonly id: string,
+    private readonly observer: SessionObserver,
+  ) {}
 
   async send(input: StudentInput, signal?: AbortSignal): Promise<Turn> {
-    return mapAttempt(await api.attempt(this.id, input.text, signal));
+    const t0 = Date.now();
+    const reply = await api.attempt(this.id, input.text, signal);
+    this.observer.answered?.(input.text, reply, Date.now() - t0);
+    return mapAttempt(reply);
   }
 
   async exit(): Promise<Solution> {
-    return (await api.exit(this.id)).solution;
+    const { solution } = await api.exit(this.id);
+    this.observer.exited?.(solution);
+    return solution;
   }
 }
 
-/** The tutor for the seeded demo learner (the backend's MARIA_ID). */
-export const backendTutor: TutorService = {
-  async begin(problem, signal) {
-    const start = await api.startSession(problem, MARIA_ID, signal);
-    return { session: new BackendSession(start.session_id), turn: openingTurn(start) };
-  },
-};
+/** The tutor for the seeded demo learner (the backend's MARIA_ID), optionally watched by a recorder. */
+export function liveTutor(observer: SessionObserver = {}): TutorService {
+  return {
+    async begin(problem, signal) {
+      const t0 = Date.now();
+      const start = await api.startSession(problem, MARIA_ID, signal);
+      observer.started?.(problem, start, Date.now() - t0);
+      return { session: new BackendSession(start.session_id, observer), turn: openingTurn(start) };
+    },
+  };
+}
+
+export const backendTutor: TutorService = liveTutor();

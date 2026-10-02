@@ -30,3 +30,6 @@ npm-debug.log*
 # Misc
 *.log
 *.pem
+docs/cognify-summary.txt
+docs/tutoring-loop.png
+docs/tutoring-loop.svg
