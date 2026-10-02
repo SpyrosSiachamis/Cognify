@@ -14,9 +14,11 @@ from pydantic import (
     ConfigDict,
     Field,
     UUID4,
+    computed_field,
     model_validator,
 )
 
+from app.common.trace import TracePayload
 from app.common.vocab import (
     Confidence,
     DecisionMode,
@@ -25,13 +27,17 @@ from app.common.vocab import (
     GapType,
     Perturbation,
     Phase,
+    NotYetReason,
     Rating,
     RejectionReason,
+    ReplyOutcome,
+    ResponseTo,
     SessionStatus,
     State,
     StepRole,
     StepStatus,
     Strategy,
+    TraceEventType,
     VerdictResult,
     VerifierMode,
 )
@@ -76,6 +82,15 @@ class SessionSolution(Record):
     steps: list[Text] = Field(min_length=1)
 
 
+class PracticeProblem(Record):
+    """The fresh problem a first NOT YET was given on, with its own hidden solution. It is the problem of the
+    repair cycle that follows; the session's own problem (problem_id) stays the original."""
+
+    follow_up_id: UUID4
+    text: Text
+    solution: SessionSolution
+
+
 class Session(Record):
     id: UUID4 = Field(default_factory=uuid4)
     student_id: UUID4
@@ -87,7 +102,17 @@ class Session(Record):
     teach_turns: int = Field(default=0, ge=0)  # since the session started or the last NOT YET
     not_yet_count: int = Field(default=0, ge=0)
     force_experiment: bool = False  # the demo flag from the start request
+    # Whether the last reply was an approved teaching move that reached the student. Only then does the next
+    # attempt count one hint (F16): fallbacks, probes and acknowledgements are not help.
+    last_reply_taught: bool = False
+    # The last tutor reply the student saw (a teaching move, a probe, a fallback, or after a NOT YET the verdict), so
+    # the next answer is read in context. Separate from hint counting (last_reply_taught). None when the next
+    # answer is to be read as work on the problem itself (the first thought, and the fresh problem).
+    last_tutor_message: str | None = None
     hidden_solution: SessionSolution | None = None
+    # Set by a first NOT YET: the failed fresh problem the repair cycle teaches on; cleared when that cycle ends
+    # with a new fresh problem. History, learner state and exit always use problem_id and hidden_solution.
+    active_practice_problem: PracticeProblem | None = None
     started_at: AwareDatetime = Field(default_factory=now)
     ended_at: AwareDatetime | None = None
 
@@ -97,6 +122,7 @@ class Attempt(Record):
     session_id: UUID4
     phase: Phase
     text: Text
+    response_to: ResponseTo = "original_problem"  # what the message answered (the reasoning step's reading)
     created_at: AwareDatetime = Field(default_factory=now)
 
 
@@ -174,6 +200,48 @@ class FollowUp(Record):
         return self
 
 
+class ReplyDraft(Record):
+    """One teaching draft of a turn and what became of it (debugging and telemetry; never shown to students)."""
+
+    id: UUID4 = Field(default_factory=uuid4)
+    session_id: UUID4
+    attempt_id: UUID4 | None = None
+    position: int = Field(ge=0)
+    outcome: ReplyOutcome  # approved, verifier_rejected, teaching_failed, verifier_error or wrong_language
+    reason: RejectionReason | None = None  # the verifier's reason, only for verifier_rejected
+    note: str = ""  # the verifier's note, or the failure detail
+    method: Strategy | None = None  # the method the draft was written for, if any
+    created_at: AwareDatetime = Field(default_factory=now)
+
+    @model_validator(mode="after")
+    def reason_only_for_rejection(self) -> "ReplyDraft":
+        if (self.outcome == "verifier_rejected") != (self.reason is not None):
+            raise ValueError("a rejection reason is set exactly when the verifier rejected the draft")
+        if self.outcome in ("fixed_reply", "turn_failed"):
+            raise ValueError("fixed replies and failed turns are not drafts")
+        return self
+
+
+class TraceEvent(Record):
+    """One event of the development session trace: what each stage received, produced and decided, in order.
+
+    Debugging only (never shown to students, never read by the tutor), kept only when tracing is on
+    (DEBUG_TRACE). The store numbers a session's events (sequence) and the service calls that produced them (turn).
+    """
+
+    id: UUID4 = Field(default_factory=uuid4)  # the event id
+    session_id: UUID4
+    sequence: int = Field(default=0, ge=0)
+    turn: int = Field(default=0, ge=0)  # 0 is the session start; then one per attempt or exit call
+    at: AwareDatetime = Field(default_factory=now)
+    payload: TracePayload  # typed per event type (app/common/trace.py)
+
+    @computed_field
+    @property
+    def event_type(self) -> TraceEventType:
+        return self.payload.event_type
+
+
 class VerifierCheck(Record):
     id: UUID4 = Field(default_factory=uuid4)
     session_id: UUID4
@@ -216,6 +284,8 @@ class Outcome(Record):
     method: Strategy | None = None
     decision_mode: DecisionMode | None = None
     result: VerdictResult
+    # Why a NOT YET (None for VERIFIED). Seeded rows may leave it unset.
+    not_yet_reason: NotYetReason | None = None
     independent: bool
     hints_used: int = Field(ge=0)
     concept_before: State
@@ -245,8 +315,19 @@ class Outcome(Record):
 
     @model_validator(mode="after")
     def verified_state_needs_verified_result(self) -> "Outcome":
-        if self.concept_after == "verified" and self.result != "VERIFIED":
+        # A NOT YET may leave an already verified concept verified only when the student did solve the fresh
+        # problem correctly on their own (hint_limit): that is not evidence they lost it.
+        keeps_verified = self.concept_before == "verified" and self.not_yet_reason == "hint_limit"
+        if self.concept_after == "verified" and self.result != "VERIFIED" and not keeps_verified:
             raise ValueError("a concept becomes verified only on a VERIFIED result")
+        return self
+
+    @model_validator(mode="after")
+    def not_yet_reason_matches_result(self) -> "Outcome":
+        if self.result == "VERIFIED" and self.not_yet_reason is not None:
+            raise ValueError("a VERIFIED outcome has no NOT YET reason")
+        if self.result == "NOT YET" and self.not_yet_reason is None and not self.is_seeded:
+            raise ValueError("a NOT YET outcome needs a reason")
         return self
 
 

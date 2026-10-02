@@ -85,7 +85,9 @@ class StubTutor:
             )
         return TeachResult(
             output=output, method=method,
-            reply_check=ReplyCheckView(approved=True, summary=f"No answer given. Method matches: {method.method}."),
+            reply_check=ReplyCheckView(
+                approved=True, summary=f"No answer given. Method matches: {method.method}.", outcome="approved"
+            ),
         )
 
     async def follow_up(self, request: FollowUpRequest) -> FollowUpResult:
@@ -127,6 +129,7 @@ class StubTutor:
             reply_check=ReplyCheckView(
                 approved=True,
                 summary="Follow-up keeps the principle, changes the context, does not state the answer.",
+                outcome="approved",
             ),
         )
 

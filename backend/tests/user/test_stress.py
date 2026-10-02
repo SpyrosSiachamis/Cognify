@@ -104,7 +104,9 @@ def check_session(store: InMemoryHistory, service: SessionService, session_id: U
     attempts = store.list_attempts(session_id)
     phases = [a.phase for a in attempts]
     assert phases.count("ask_first_thought") <= 1, "two first thoughts: a turn ran from stale state"
-    assert session.hints_used == phases.count("teach"), "hints_used does not match the teaching replies saved"
+    # A hint is a delivered teaching move (recorded as a decision) that the student then answered (F16).
+    delivered = len(store.list_strategy_decisions(session_id))
+    assert session.hints_used + int(session.last_reply_taught) == delivered, "hints_used does not match the moves delivered"
     verified = 1 if session.status == "verified" else 0
     assert phases.count("stress_test") == session.not_yet_count + verified, "a stress-test attempt had no verdict"
     assert session.not_yet_count <= MAX_NOT_YET

@@ -22,11 +22,13 @@ from .schema import (
     FollowUp,
     Outcome,
     Problem,
+    ReplyDraft,
     SeenFingerprint,
     Session,
     Student,
     StrategyDecision,
     StrategyStat,
+    TraceEvent,
     VerifierCheck,
 )
 
@@ -50,6 +52,8 @@ class InMemoryHistory:
         self._decisions: list[StrategyDecision] = []
         self._follow_ups: list[FollowUp] = []
         self._checks: list[VerifierCheck] = []
+        self._drafts: list[ReplyDraft] = []
+        self._trace: list[TraceEvent] = []
         self._outcomes: list[Outcome] = []
         self._states: list[ConceptState] = []
         self._seed_states: list[ConceptState] = []  # what reset_demo restores
@@ -178,6 +182,43 @@ class InMemoryHistory:
             self._find_session(check.session_id)
             self._checks.append(_copy(check))
             return _copy(check)
+
+    def add_reply_drafts(self, drafts: list[ReplyDraft]) -> list[ReplyDraft]:
+        with self._lock:
+            for draft in drafts:
+                self._find_session(draft.session_id)
+            self._drafts.extend(_copy(d) for d in drafts)
+            return [_copy(d) for d in drafts]
+
+    def list_reply_drafts(self, session_id: UUID) -> list[ReplyDraft]:
+        with self._lock:
+            return [_copy(d) for d in self._drafts if d.session_id == session_id]
+
+    def list_strategy_decisions(self, session_id: UUID) -> list[StrategyDecision]:
+        with self._lock:
+            return [_copy(d) for d in self._decisions if d.session_id == session_id]
+
+    def add_trace_events(self, session_id: UUID, events: list[TraceEvent]) -> list[TraceEvent]:
+        """One service call's events, in order: numbered after the session's last event, as one new turn."""
+        with self._lock:
+            self._find_session(session_id)
+            earlier = [e for e in self._trace if e.session_id == session_id]
+            sequence = earlier[-1].sequence + 1 if earlier else 0
+            turn = earlier[-1].turn + 1 if earlier else 0
+            added = [
+                e.model_copy(update={"session_id": session_id, "sequence": sequence + i, "turn": turn}, deep=True)
+                for i, e in enumerate(events)
+            ]
+            self._trace.extend(added)
+            return [_copy(e) for e in added]
+
+    def list_trace_events(self, session_id: UUID) -> list[TraceEvent]:
+        with self._lock:
+            return [_copy(e) for e in self._trace if e.session_id == session_id]
+
+    def traced_sessions(self) -> list[UUID]:
+        with self._lock:
+            return list(dict.fromkeys(e.session_id for e in self._trace))
 
     # ---- latest saved record of a session ----
 
@@ -335,6 +376,8 @@ class InMemoryHistory:
             self._decisions = [d for d in self._decisions if d.session_id not in session_ids]
             self._follow_ups = [f for f in self._follow_ups if f.session_id not in session_ids]
             self._checks = [c for c in self._checks if c.session_id not in session_ids]
+            self._drafts = [d for d in self._drafts if d.session_id not in session_ids]
+            self._trace = [e for e in self._trace if e.session_id not in session_ids]
             self._problems = [p for p in self._problems if p.id not in problem_ids]
             self._outcomes = [
                 o for o in self._outcomes if o.is_seeded or o.student_id not in demo_ids

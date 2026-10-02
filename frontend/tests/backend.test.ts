@@ -23,7 +23,7 @@ const TEACH: TutorTurn = {
   },
   method: { name: "visual_decomposition", mode: "experiment", experiment: true, reason: "Testing another method." },
   hints_used: 1,
-  reply_check: { approved: true, summary: "No answer given." },
+  reply_check: { approved: true, summary: "No answer given.", outcome: "approved" },
 };
 const STRESS: TutorTurn = {
   session_id: "s1",
@@ -31,7 +31,7 @@ const STRESS: TutorTurn = {
   message: "Now I am removing the support.",
   follow_up: { problem: "A stone is launched upward at 15 m/s." },
   hints_used: 1,
-  reply_check: { approved: true, summary: "Follow-up keeps the principle." },
+  reply_check: { approved: true, summary: "Follow-up keeps the principle.", outcome: "approved" },
 };
 const verdict = (result: "VERIFIED" | "NOT YET", over: boolean): VerdictTurn => ({
   session_id: "s1",
@@ -112,6 +112,15 @@ describe("mapping backend turns onto the screens", () => {
     expect(verified.next).toBeNull();
     expect(mapAttempt(verdict("NOT YET", false)).next).toMatchObject({ kind: "reply" });
     expect(mapAttempt(verdict("NOT YET", true)).next).toMatchObject({ kind: "ended" });
+  });
+
+  it("a fallback names the backend's stated cause and never claims a verifier rejection it was not", () => {
+    const fallback = (outcome?: string) => mapAttempt({ ...TEACH, reply_check: { approved: false, summary: "Safe fallback used.", outcome } } as TutorTurn);
+    const logs = (outcome?: string) => fallback(outcome).beats.flatMap((b) => ("log" in b ? [b.log.b] : []));
+    expect(logs("verifier_rejected")).toContain("Verifier rejected the reply");
+    for (const other of ["teaching_failed", "verifier_error", "wrong_language", "turn_failed", undefined])
+      expect(logs(other).some((l) => /verifier rejected/i.test(l))).toBe(false);
+    expect(logs(undefined)).toContain("Safe fallback sent");
   });
 
   it("message text keeps the backend's words; only paragraphs and bold are rendered", () => {

@@ -244,6 +244,8 @@ def test_case_13_student_finds_the_equation_and_the_gap_is_repaired(tutor):
 def test_case_14_student_still_stuck_is_not_repaired(tutor):
     result = teach(tutor, "I still don't know.", first_thought=False, hints_used=1, prior=PRIOR)
     assert not result.output.gap_repaired
-    assert result.method is not None and tutor.trace.mode == "teach"
+    # A method was chosen for the still-open gap (result.method is only set when its reply reached the student:
+    # a turn whose drafts were all rejected sends the safe fallback and reports no method).
+    assert tutor.trace.strategy is not None and tutor.trace.mode == "teach"
     assert result.output.main_gap == "recognition"
     assert result.output.reply.strip() != TEACHING

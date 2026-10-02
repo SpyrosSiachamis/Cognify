@@ -1,7 +1,8 @@
 """The reasoning step: one structured call that diagnoses the student's work.
 
-It sees only the problem, the attempt and the final answer: never the teaching
-method or the history, so the diagnosis cannot bend toward how we will teach.
+It sees the problem, the attempt, the final answer and, when the student is answering it, the tutor's last
+delivered teaching move: never the teaching method's name, definition or reason, or the history, so the
+diagnosis cannot bend toward how we will teach.
 """
 
 import re
@@ -12,6 +13,7 @@ from pydantic_ai.models import Model
 
 from app.ai_gateway import gateway
 from app.ai_gateway.schema import GatewayFallback, GatewayOk
+from app.common import trace
 
 from .evidence import NOT_KNOWING, quote_found, substantive
 from .repair import GAP_STEPS
@@ -31,10 +33,20 @@ reasoning_agent = Agent(
 )
 
 
+# Messages that carry no work on this problem: a question back, an acknowledgement, or work on a different problem
+# (a worked example, the earlier practice problem). They are never judged against this problem.
+NOT_THIS_PROBLEM = ("clarification", "acknowledgement", "other_problem")
+
+
 def apply_rules(
-    diagnosis: ReasoningDraft | TutorDiagnosis, attempt: str, recheck: bool = True
+    diagnosis: ReasoningDraft | TutorDiagnosis, attempt: str, recheck: bool = True, has_tutor_message: bool = False
 ) -> TutorDiagnosis:
     """Deterministic rules on top of the model's reading. They keep "not observed" apart from "missing".
+
+    - What the message answers comes first, and only counts when there was a tutor message to answer:
+      a clarification, an acknowledgement or work on a different problem (a worked example, the earlier
+      practice problem) is no evidence about this problem (insufficient); an answer to a tutor sub-question
+      keeps its correct and wrong steps but not the steps it was never asked about.
 
     - No quote, no claim (rule 7): a correct or wrong step with no quote, or with a quote that cannot be
       found in the attempt, is not observed, so it is dropped. It is not turned into a missing step:
@@ -53,6 +65,14 @@ def apply_rules(
     - A concept gap is a wrong belief, so it shows as a wrong step; unfinished work alone is not one.
     - A gap must show at the step where that kind of gap lives.
     """
+    # What the message answers decides how it is read, before any other rule (some of them ask for a retry).
+    # Without a tutor message it can only be work on the problem itself.
+    response_to = diagnosis.response_to if has_tutor_message else "original_problem"
+    if response_to in NOT_THIS_PROBLEM:
+        return INSUFFICIENT.model_copy(update={"response_to": response_to})
+    if response_to == "tutor_question":
+        # An answer to one sub-question: the steps it was not asked about are not missing, they were not asked.
+        diagnosis = diagnosis.model_copy(update={"steps": [s for s in diagnosis.steps if s.status != "missing"]})
     observed = [
         Step(role=s.role, status=s.status, quote=s.quote)
         for s in diagnosis.steps
@@ -79,7 +99,7 @@ def apply_rules(
         )
     if not any(s.status == "wrong" for s in update["steps"]):
         update["error"] = None
-    result = TutorDiagnosis.model_validate({**diagnosis.model_dump(), **{k: v for k, v in update.items()}})
+    result = TutorDiagnosis.model_validate({**diagnosis.model_dump(), **update, "response_to": response_to})
     # Unfinished is not wrong. A step the model calls both wrong and not yet done is usually correct work
     # so far with the rest still to do; the model is asked to confirm the wrong label once.
     wrong = [s for s in result.steps if s.status == "wrong"]
@@ -119,7 +139,7 @@ def follow_the_rules(ctx: RunContext[ReasoningInput], output: ReasoningDraft) ->
     try:
         # The consistency checks ask once; a second disagreement is accepted rather than
         # throwing the whole diagnosis away.
-        apply_rules(output, ctx.deps.attempt, recheck=ctx.retry == 0)
+        apply_rules(output, ctx.deps.attempt, recheck=ctx.retry == 0, has_tutor_message=ctx.deps.tutor_message is not None)
     except ValueError as exc:
         raise ModelRetry(f"{exc}. Return the complete output again, with every field.") from exc
     return output
@@ -137,13 +157,20 @@ async def diagnose(
     so the turn asks a probe, never guesses."""
     proposed = await gateway.call(
         reasoning_agent,
-        reasoning_input.model_dump_json(indent=2),
+        reasoning_input.prompt(),
         model=model,
         deps=reasoning_input,
         fallback=None,
         timeout=timeout,
     )
+    trace.record(
+        trace.ReasoningRead, problem=reasoning_input.problem, attempt=reasoning_input.attempt,
+        final_answer=reasoning_input.final_answer, tutor_message=reasoning_input.tutor_message,
+        outcome="ok" if proposed.ok and proposed.value is not None else proposed.failure or "invalid_output",
+        proposal=proposed.value if proposed.ok else None, detail=None if proposed.ok else proposed.detail,
+    )
     if not proposed.ok or proposed.value is None:
         return GatewayFallback(value=INSUFFICIENT, failure=proposed.failure, detail=proposed.detail)
     # The validator already accepted this proposal, so the same rules turn it into the diagnosis.
-    return GatewayOk(value=apply_rules(proposed.value, reasoning_input.attempt, recheck=False))
+    has_tutor_message = reasoning_input.tutor_message is not None
+    return GatewayOk(value=apply_rules(proposed.value, reasoning_input.attempt, recheck=False, has_tutor_message=has_tutor_message))

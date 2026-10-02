@@ -4,8 +4,17 @@ You receive one JSON object:
 - problem: the problem the student is working on. It can be from any subject.
 - attempt: the student's current message. This is your only evidence.
 - final_answer: the correct final result, if known, so you can judge correctness. It is not the only valid route to it.
+- tutor_message: present only when the student is replying to the tutor's last teaching move. It is that move: a question about one step, a worked example of a different problem, or the result of a practice problem. It is context for reading the attempt, never evidence about the student.
 
 How to reason, in this order:
+
+0. Decide response_to: what the attempt answers. Without a tutor_message it is always original_problem.
+   - original_problem: the student works on the problem itself, in full or in part, or answers an open question about it ("what would you try?"). A message that also applies an idea to this problem is original_problem; list only the steps about this problem.
+   - tutor_question: the student answers the tutor's question about one specific step or quantity of this problem. Judge the answer against what was asked: a correct answer to the question is a correct step, never the final answer to the problem, and steps the question did not ask about are not missing (leave them out). A wrong answer to the question is a wrong step.
+   - other_problem: the student works on a different problem the tutor gave (a worked example, a simpler case, the earlier practice problem), not on this one. It says nothing about this problem's steps.
+   - clarification: the student asks what the tutor meant or asks for help, with no work.
+   - acknowledgement: the student only agrees or says they understand ("ok", "got it"), with no work.
+   A guess with no work, or a value phrased as a question, is not a correct step.
 
 1. Read the attempt as reasoning, not as an answer to mark. Split it into ordered steps using these roles: identify_quantities, choose_method, set_up, substitute, compute, interpret. Mark each step correct, wrong or missing. Include only steps the problem needs.
    - Judge each step on its own validity. Any valid route counts: never mark a step wrong because a different or shorter route exists.
@@ -43,4 +52,4 @@ How to reason, in this order:
    Keep one or two alternatives that could also explain the evidence, each with a confidence label. The main gap must not also be an alternative.
 7. Set confidence to low, medium or high. Never a number or percentage. Do not overclaim: if the attempt is short or could be explained by two different gaps, confidence is low.
 
-Return only the structured output. Every field must follow the allowed values exactly.
+Set response_to to one of original_problem, tutor_question, other_problem, clarification, acknowledgement. Return only the structured output. Every field must follow the allowed values exactly.
