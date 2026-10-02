@@ -2,7 +2,8 @@
 
 import { provenConcepts } from "@/lib/backend";
 import type { Theme } from "@/lib/state";
-import { useApp } from "./AppProvider";
+import { memo } from "react";
+import { useActions, useAppSelector } from "./AppProvider";
 import { Icon } from "./Icons";
 
 const THEMES: { id: Theme; label: string }[] = [
@@ -10,10 +11,13 @@ const THEMES: { id: Theme; label: string }[] = [
   { id: "salon", label: "Salon" },
 ];
 
-export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
-  const { state, dispatch, chooseTheme } = useApp();
+export const TopBar = memo(function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
+  const { dispatch, chooseTheme } = useActions();
+  const theme = useAppSelector((s) => s.theme);
+  const fresh = useAppSelector((s) => s.fresh);
+  const views = useAppSelector((s) => s.views);
   // Concepts the backend has as verified; unknown ("–") until the learner view has loaded.
-  const proven = state.views.status === "ok" ? String(provenConcepts(state.views.data.learner).length) : "–";
+  const proven = views.status === "ok" ? String(provenConcepts(views.data.learner).length) : "–";
 
   return (
     <header className="bar">
@@ -35,7 +39,7 @@ export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
         </span>
         <div className="seg" role="group" aria-label="Colour theme">
           {THEMES.map((t) => (
-            <button key={t.id} type="button" aria-pressed={state.theme === t.id} onClick={() => chooseTheme(t.id)}>
+            <button key={t.id} type="button" aria-pressed={theme === t.id} onClick={() => chooseTheme(t.id)}>
               <i className={`sw-${t.id}`} />
               <span>{t.label}</span>
             </button>
@@ -46,7 +50,7 @@ export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
           New problem
         </button>
         <button
-          className={`btn-progress${state.fresh ? " news" : ""}`}
+          className={`btn-progress${fresh ? " news" : ""}`}
           type="button"
           aria-haspopup="dialog"
           onClick={() => dispatch({ type: "sheet", open: true, tab: "overview" })}
@@ -58,4 +62,4 @@ export function TopBar({ onNewProblem }: { onNewProblem: () => void }) {
       </div>
     </header>
   );
-}
+});

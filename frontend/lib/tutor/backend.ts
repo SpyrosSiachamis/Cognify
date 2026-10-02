@@ -55,6 +55,8 @@ function verdictTurn(turn: VerdictTurn): Turn {
     beats.push({ seal: true });
     return { beats, next: null };
   }
+  // Point the student to the explanation in Progress.
+  beats.push({ toast: { msg: "Not verified yet. See why", label: "See why", tab: "overview" } });
   if (turn.session_over) return { beats, next: { kind: "ended", message: v.evidence } };
   return { beats, next: REPLY }; // the backend moved the session back to teaching
 }

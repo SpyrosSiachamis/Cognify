@@ -36,4 +36,14 @@ describe("app state", () => {
     const s = reducer({ ...initialState, view: "result", problem: "other", views }, { type: "newProblem" });
     expect(s).toMatchObject({ view: "home", problem: "", views });
   });
+
+  it("starting again after a lost session keeps the problem and clears the old session", () => {
+    let s = reducer(initialState, { type: "problem", problem: "A ball is thrown up at 20 m/s." });
+    s = reducer(s, { type: "startSession", now: 1 });
+    s = reducer(s, { type: "sent", text: "my idea", first: true });
+    const again = reducer(s, { type: "startSession", now: 2 });
+    expect(again.problem).toBe("A ball is thrown up at 20 m/s.");
+    expect(again.run).toBe(s.run + 1);
+    expect(again.session.firstIdea).toBe("");
+  });
 });

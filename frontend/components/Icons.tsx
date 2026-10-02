@@ -1,6 +1,8 @@
+import { memo } from "react";
+
 /* The little icon set from the prototype, drawn once and reused with <Icon id="..." />. */
 
-export function IconSprite() {
+export const IconSprite = memo(function IconSprite() {
   return (
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
       <defs>
@@ -23,16 +25,16 @@ export function IconSprite() {
       </defs>
     </svg>
   );
-}
+});
 
 export type IconId =
   | "i-book" | "i-spark" | "i-bulb" | "i-mountain" | "i-bolt" | "i-pencil" | "i-check" | "i-info"
   | "i-lock" | "i-chart" | "i-arrow" | "i-wave" | "i-flame" | "i-close" | "i-undo" | "i-nodes";
 
-export function Icon({ id, className = "", style }: { id: IconId; className?: string; style?: React.CSSProperties }) {
+export const Icon = memo(function Icon({ id, className = "", style }: { id: IconId; className?: string; style?: React.CSSProperties }) {
   return (
     <svg className={`i ${className}`.trim()} style={style} aria-hidden="true">
       <use href={`#${id}`} />
     </svg>
   );
-}
+});

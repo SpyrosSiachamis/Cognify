@@ -508,3 +508,12 @@ body.dim .glow{opacity:.2}
 .paper::after{mix-blend-mode:normal;opacity:.12}
 /* the headline shimmer repainted its text every frame; keep the gold, drop the endless animation */
 h1 em,h2 em{animation:none;background-position:0 0;filter:none;text-shadow:0 2px 16px rgba(0,0,0,.35)}
+
+/* ============ performance ============ */
+/* The card spotlight moves with the pointer. Registered as non-inherited, so moving it restyles only the
+   card's light layer, not every element inside the card. */
+@property --mx{syntax:"<length-percentage>";inherits:false;initial-value:50%}
+@property --my{syntax:"<length-percentage>";inherits:false;initial-value:-30%}
+.paper::before{--mx:inherit;--my:inherit}
+/* The short line next to the typing dots while a turn takes a while. */
+.waiting-line{margin-left:10px;font-family:var(--f-ui);font-size:13px;color:var(--ink-faint);vertical-align:middle}

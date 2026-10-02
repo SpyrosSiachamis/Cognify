@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { room } from "@/lib/room";
 
 /* The dark library behind everything. The drawing code is in lib/room.ts. */
-export function Room() {
+export const Room = memo(function Room() {
   const stage = useRef<HTMLDivElement>(null);
   const scene = useRef<HTMLCanvasElement>(null);
   const motes = useRef<HTMLCanvasElement>(null);
@@ -44,4 +44,4 @@ export function Room() {
       <canvas id="cvSparks" ref={sparks} aria-hidden="true" />
     </>
   );
-}
+});
