@@ -1,7 +1,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from functools import lru_cache
 
 from fastapi import FastAPI
@@ -18,19 +18,34 @@ from app.user.service import SessionService
 log = logging.getLogger(__name__)
 
 
+def tutor_mode(env: Mapping[str, str] = os.environ) -> str:
+    """Which tutor serves the API: "offline" (DEMO_MODE=offline), "agent" (TUTOR_MODEL_ID set) or "stub"."""
+    demo = env.get("DEMO_MODE", "").strip().lower()
+    if demo not in ("", "off", "offline"):
+        raise RuntimeError(f"DEMO_MODE is {demo!r}; use 'offline' to play the saved story, or leave it unset")
+    if demo == "offline":
+        return "offline"
+    return "agent" if env.get("TUTOR_MODEL_ID") else "stub"
+
+
 def check_tutor_config() -> str:
     """Say which tutor serves the API, and refuse to start a real tutor that cannot work."""
-    if not os.environ.get("TUTOR_MODEL_ID"):
+    mode = tutor_mode()
+    if mode == "offline":
+        # The saved story needs no network, no credentials and no model, so none of them are checked (F27)
+        log.warning("tutor: OFFLINE DEMO (DEMO_MODE=offline): the saved Maria and Nikos story, no AI is called")
+        return mode
+    if mode == "stub":
         log.warning("tutor: StubTutor (TUTOR_MODEL_ID is not set; offline demo path)")
-        return "stub"
+        return mode
     from app.ai_gateway.gateway import config_problems
 
     problems = config_problems("TUTOR_MODEL_ID")
     if problems:
         raise RuntimeError("TUTOR_MODEL_ID is set, so the real tutor is on, but: " + "; ".join(problems)
-                           + ". Fix the configuration, or unset TUTOR_MODEL_ID to run the offline stub.")
+                           + ". Fix the configuration, set DEMO_MODE=offline, or unset TUTOR_MODEL_ID.")
     log.warning("tutor: AgentTutor (model %s, region %s)", os.environ["TUTOR_MODEL_ID"], os.environ["AWS_REGION"])
-    return "agent"
+    return mode
 
 
 @asynccontextmanager
@@ -60,8 +75,8 @@ def get_agent_service() -> SessionService:
     return SessionService(AgentTutor(store), store)
 
 
-# The real tutor when a model is configured; otherwise the stub keeps the demo offline (F27).
-if os.environ.get("TUTOR_MODEL_ID"):
+# The real tutor when a model is configured; otherwise (or with DEMO_MODE=offline) the stub plays the saved story (F27).
+if tutor_mode() == "agent":
     app.dependency_overrides[get_service] = get_agent_service
 
 

@@ -39,14 +39,18 @@ Cognify is a problem-solving tutor that learns how a student thinks. Most tutors
 
 ## Offline switch (F27)
 
-One backend setting returns the saved Maria story with the same response shapes, so the frontend cannot tell. Set it, run `docker compose up -d backend`, and rehearse once. Plain restart does not reload `.env`.
+Set `DEMO_MODE=offline` in `.env`, then run `docker compose up -d backend` (a plain restart does not reload `.env`). The backend then plays the saved Maria and Nikos story with the same response shapes, so the frontend cannot tell. It needs no network, no AWS credentials and no model, and it works even when `TUTOR_MODEL_ID` is still set. The backend log says `tutor: OFFLINE DEMO` on start. To go back, empty `DEMO_MODE` and run the same command.
+
+- Whatever problem is pasted, the saved ball story is what plays. It is a rehearsal, not a solver.
+- A mistyped value (for example `ofline`) stops the backend at start, so the real tutor never runs by accident.
+- Check it once before the demo: `python demo/play_story.py` plays the whole story and prints PASS or FAIL for every step.
 
 ## Pre-flight checklist
 
 - [ ] `docker compose up --build` is running; `curl localhost:8000/health` is OK
 - [ ] Seeded history reloaded (the one-step reset in `DATA.md`); Maria is fragile at 7 of 9
 - [ ] Full Maria story run once, end to end
-- [ ] Offline switch tested, then set back
+- [ ] Offline switch tested (`DEMO_MODE=offline`, then `python demo/play_story.py`), then set back
 - [ ] The Nikos comparison works
 - [ ] Experiment demo flag tested
 - [ ] Second device opens the public address (F28)
