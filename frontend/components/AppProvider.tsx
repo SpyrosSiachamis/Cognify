@@ -4,7 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { room } from "@/lib/room";
 import { initialState, reducer, type Action, type AppState, type Theme } from "@/lib/state";
 
-type Ctx = { state: AppState; dispatch: (a: Action) => void; chooseTheme: (t: Theme) => void };
+// replay: the label of the recorded session being replayed (lib/tutor/replay.ts), or null for the live tutor.
+type Ctx = { state: AppState; dispatch: (a: Action) => void; chooseTheme: (t: Theme) => void; replay: string | null };
 const AppContext = createContext<Ctx | null>(null);
 
 const THEME_KEY = "cognify-theme";
@@ -15,7 +16,7 @@ function paintTheme(theme: Theme) {
   else document.documentElement.removeAttribute("data-theme");
 }
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({ children, replay = null }: { children: ReactNode; replay?: string | null }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   // Pick up the saved theme. The inline script in layout.tsx already painted it on <html>,
@@ -41,7 +42,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle("dim", state.dim);
   }, [state.dim]);
 
-  const value = useMemo(() => ({ state, dispatch, chooseTheme }), [state, chooseTheme]);
+  const value = useMemo(() => ({ state, dispatch, chooseTheme, replay }), [state, chooseTheme, replay]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 

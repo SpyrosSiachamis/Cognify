@@ -14,8 +14,9 @@ export type LogKind = "" | "ok" | "ai";
 
 // What the student is asked to do next. The backend has one turn endpoint, so every answer is free text.
 export type Widget =
-  | { kind: "reply"; kicker: string; placeholder: string; first: boolean } // first: the student's first idea
-  | { kind: "stress"; kicker: string; problem: string; placeholder: string } // the fresh problem, no support
+  | { kind: "reply"; kicker: string; placeholder: string; first: boolean; prefill?: string } // first: the student's first idea
+  | { kind: "stress"; kicker: string; problem: string; placeholder: string; prefill?: string } // the fresh problem, no support
+  // prefill: only a replay sets it (lib/tutor/replay.ts), with what the student sent live
   | { kind: "ended"; message: string }; // the session is over without a verified result
 
 // A tutor turn is a list of small beats the screen plays in order, then the next thing to ask.

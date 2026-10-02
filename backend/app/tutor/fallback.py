@@ -98,7 +98,8 @@ def explain_fallback(
         step = gap_step if gap_step in wrong else wrong[0]
         return text["incorrect_step"].format(step=_short(step.quote or "")), "incorrect_step"
 
-    read_as_work = diagnosis.evidence == "sufficient" and diagnosis.response_to == "original_problem"
+    # An answer to the tutor's sub-question is work on this problem too (only its asked steps are kept).
+    read_as_work = diagnosis.evidence == "sufficient" and diagnosis.response_to in ("original_problem", "tutor_question")
     if not read_as_work:
         if substantive(student_text):
             # Working was sent but could not be placed on this problem: asking for it again as if it were

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { ApiError } from "@/lib/api";
 import { loadViews } from "@/lib/backend";
 import { backendTutor } from "@/lib/tutor/backend";
+import { replay, type Recording } from "@/lib/tutor/replay";
 import { AppProvider, useApp } from "./AppProvider";
 import { Home } from "./Home";
 import { IconSprite } from "./Icons";
@@ -15,16 +16,25 @@ import { Toast } from "./Toast";
 import { Room } from "./Room";
 import { TopBar } from "./TopBar";
 
-function Shell() {
+function Shell({ recording }: { recording?: Recording }) {
   const { state, dispatch } = useApp();
+  // A replay plays a recorded session through the same screens; nothing calls the backend.
+  const player = useMemo(() => (recording ? replay(recording) : null), [recording]);
+  const tutor = player?.tutor ?? backendTutor;
+  const load = player?.loadViews ?? loadViews;
 
   // What the backend knows about the learner. Loading and failure are shown as they are; nothing is filled in.
   const refreshViews = useCallback(() => {
-    loadViews()
+    load()
       .then((data) => dispatch({ type: "views", views: { status: "ok", data } }))
       .catch((e) => dispatch({ type: "views", views: { status: "error", message: e instanceof ApiError ? e.message : String(e) } }));
-  }, [dispatch]);
+  }, [dispatch, load]);
   useEffect(refreshViews, [refreshViews]);
+
+  // A replay starts from its recorded problem.
+  useEffect(() => {
+    if (recording && state.view === "home" && !state.problem) dispatch({ type: "problem", problem: recording.problem });
+  }, [recording, state.view, state.problem, dispatch]);
 
   // A verdict changes the learner's concept state and strategy counts on the backend: read them again.
   const verdict = state.session.verdict;
@@ -69,7 +79,7 @@ function Shell() {
       <TopBar onNewProblem={newProblem} />
       <main className="wrap" id="main">
         {state.view === "home" && <Home onStart={start} onRetryViews={refreshViews} />}
-        {state.view === "session" && <SessionView tutor={backendTutor} onNewProblem={newProblem} />}
+        {state.view === "session" && <SessionView tutor={tutor} onNewProblem={newProblem} />}
         {state.view === "result" && <ResultView onNewProblem={newProblem} />}
       </main>
       <ProgressDrawer onRefresh={refreshViews} />
@@ -79,10 +89,10 @@ function Shell() {
   );
 }
 
-export function App() {
+export function App({ recording }: { recording?: Recording } = {}) {
   return (
-    <AppProvider>
-      <Shell />
+    <AppProvider replay={recording?.label ?? null}>
+      <Shell recording={recording} />
     </AppProvider>
   );
 }

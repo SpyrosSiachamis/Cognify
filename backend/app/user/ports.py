@@ -47,6 +47,9 @@ class TeachRequest(BaseModel):
     tutor_message: str | None = None
     # Steps the student already got right earlier in this teaching cycle, so a reply may confirm them.
     earlier_correct_steps: list[Step] = []
+    # Every step diagnosed correct in this teaching cycle, also from answers that had a wrong step: the earlier work
+    # a correction may build on (code's correct-work resolution only).
+    validated_steps: list[Step] = []
 
 
 class DraftOutcome(BaseModel):

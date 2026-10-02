@@ -1,6 +1,7 @@
 """The personal follow-up (F14) that is also the stress test (F15): one fresh problem, no support.
 
-generate (LLM) -> code checks (not the original with new numbers, in the student's language)
+generate (LLM) -> code checks (not the original with new numbers, in the student's language, an expected answer that
+  satisfies the problem)
   -> follow-up check (verifier LLM) -> approved, or regenerate with the reason (max 2) -> error
 A follow-up is never faked: if none passes, the caller gets an error and the session says try again.
 """
@@ -18,6 +19,7 @@ from app.common.vocab import GapType, RejectionReason, Strategy
 from app.verification.agent import check_follow_up
 from app.verification.schema import FollowUpCheckInput, FollowUpCheckResult
 
+from .expected_check import ExpectedCheck, check_expected
 from .language import Language, written_in
 from .schema import FollowUpDraft, Step, Text
 
@@ -41,7 +43,14 @@ class FollowUpInput(BaseModel):
     retry_note: str | None = None
 
 
-follow_up_agent = Agent(output_type=FollowUpDraft, instructions=INSTRUCTIONS, retries=1, name="tutor_follow_up")
+class FollowUpProposal(FollowUpDraft):
+    """What the model writes: the draft plus the answer as values and conditions, for code's check. Only the draft
+    goes on; the candidate stays here."""
+
+    expected_check: ExpectedCheck | None = None
+
+
+follow_up_agent = Agent(output_type=FollowUpProposal, instructions=INSTRUCTIONS, retries=1, name="tutor_follow_up")
 
 
 class FollowUpUnavailable(RuntimeError):
@@ -82,10 +91,15 @@ async def write_follow_up(
             break
         # Deterministic fact: the follow-up tests the gap that was taught (or transfer when none was).
         draft = FollowUpDraft.model_validate(
-            {**written.value.model_dump(), "target_gap": follow_up_input.main_gap or "transfer"}
+            {**written.value.model_dump(exclude={"expected_check"}), "target_gap": follow_up_input.main_gap or "transfer"}
         )
+        # The rubric's last point is the answer the student will be judged against: code proves it or it is not used.
+        expected = check_expected(written.value.expected_check, draft.problem, draft.hidden_rubric[-1])
         problem_reason = None
-        if overlap(draft.problem, follow_up_input.problem) > TOO_CLOSE:
+        if expected.status == "INVALID_EXPECTED_SOLUTION":
+            problem_reason = ("invalid_followup", f"Your answer does not satisfy your problem: {expected.reason}. "
+                              "Choose the answer first, set the problem's values from it, and give exact values.")
+        elif overlap(draft.problem, follow_up_input.problem) > TOO_CLOSE:
             problem_reason = ("invalid_followup", "This is the original problem with small changes. Write a new "
                               "situation that needs the same idea.")
         elif not written_in(draft.problem, follow_up_input.language):

@@ -1,0 +1,197 @@
+{
+ "problem": "A school has 420 tablets. 10% are damaged and removed. The remaining tablets are divided between Room A and Room B in a ratio of 3:4. Room A receives 20% more tablets from a new shipment. Room B has 15% of its tablets replaced one-for-one, so its quantity does not change. Finally, 5% of the original 420 tablets are transferred from Room B to Room A.",
+ "turns": [
+  "I'm not sure",
+  "Oh I see, 420*0.1 = 42. So 42 tablets are damaged",
+  "Oh I see, 420-42 = 378",
+  "I got no clue"
+ ],
+ "proposals": [
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "choose_method",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "set_up",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "substitute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "compute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "interpret",
+     "status": "missing",
+     "quote": null
+    }
+   ],
+   "dimensions": [],
+   "main_gap": null,
+   "alternatives": [],
+   "confidence": "low",
+   "evidence": "insufficient",
+   "error": null,
+   "response_to": "original_problem"
+  },
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "420*0.1 = 42. So 42 tablets are damaged"
+    },
+    {
+     "role": "choose_method",
+     "status": "correct",
+     "quote": "420*0.1 = 42"
+    },
+    {
+     "role": "substitute",
+     "status": "correct",
+     "quote": "420*0.1"
+    },
+    {
+     "role": "compute",
+     "status": "correct",
+     "quote": "42"
+    },
+    {
+     "role": "interpret",
+     "status": "correct",
+     "quote": "So 42 tablets are damaged"
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "correctness",
+     "state": "strong",
+     "evidence": "The student correctly identified the first quantity (damaged tablets), chose the right method (multiplication by 10%), substituted the values, computed the result, and interpreted it accurately."
+    },
+    {
+     "name": "recognition",
+     "state": "strong",
+     "evidence": "The student recognized that the first step involves calculating 10% of the total tablets to find the number of damaged tablets."
+    },
+    {
+     "name": "representation",
+     "state": "strong",
+     "evidence": "The student accurately translated the problem's wording ('10% are damaged') into a mathematical operation (420 * 0.1)."
+    },
+    {
+     "name": "procedure",
+     "state": "strong",
+     "evidence": "The student performed the calculation (420 * 0.1 = 42) correctly."
+    },
+    {
+     "name": "concept",
+     "state": "untested",
+     "evidence": "The attempt does not provide evidence of the student's understanding of percentages beyond this specific calculation."
+    }
+   ],
+   "main_gap": null,
+   "alternatives": [],
+   "confidence": "high",
+   "evidence": "sufficient",
+   "error": null,
+   "response_to": "tutor_question"
+  },
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "420"
+    },
+    {
+     "role": "choose_method",
+     "status": "correct",
+     "quote": "10% are damaged and removed"
+    },
+    {
+     "role": "compute",
+     "status": "correct",
+     "quote": "420-42 = 378"
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "correctness",
+     "state": "strong",
+     "evidence": "The student correctly identified the total number of tablets (420) and computed 10% of it (42) to find the number of damaged tablets. They then correctly subtracted this from the total to find the remaining tablets (378)."
+    },
+    {
+     "name": "procedure",
+     "state": "strong",
+     "evidence": "The student performed the arithmetic operations accurately, demonstrating a clear understanding of how to calculate a percentage and subtract it from the total."
+    },
+    {
+     "name": "representation",
+     "state": "strong",
+     "evidence": "The student correctly interpreted the problem's quantities and translated them into a numerical operation (420 - 42 = 378)."
+    }
+   ],
+   "main_gap": null,
+   "alternatives": [],
+   "confidence": "high",
+   "evidence": "sufficient",
+   "error": null,
+   "response_to": "tutor_question"
+  },
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "choose_method",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "set_up",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "substitute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "compute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "interpret",
+     "status": "missing",
+     "quote": null
+    }
+   ],
+   "dimensions": [],
+   "main_gap": null,
+   "alternatives": [],
+   "confidence": "low",
+   "evidence": "insufficient",
+   "error": null,
+   "response_to": "clarification"
+  }
+ ]
+}

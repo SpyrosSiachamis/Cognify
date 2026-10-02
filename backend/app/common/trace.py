@@ -42,6 +42,7 @@ from app.common.vocab import (
     Phase,
     RejectionReason,
     ReplyOutcome,
+    ResolutionState,
     ResponseTo,
     SessionStatus,
     State,
@@ -130,6 +131,9 @@ class ReasoningRead(_Payload):
     attempt: str
     final_answer: str | None
     tutor_message: str | None
+    # Passed forward for code's rules only (never sent to the model): values the problem's working really reaches,
+    # from its worked solution and from results the student already showed correctly in this cycle.
+    reached_values: list[float] = []
     outcome: Literal["ok"] | GatewayFailure
     proposal: dict[str, Any] | None  # the model's raw reading
     detail: str | None = None
@@ -150,6 +154,14 @@ class DiagnosisResult(_Payload):
     gap_carried: bool  # main_gap is the gap still being taught, not one this answer showed
     gap_repaired: bool
     repair_reason: str
+    # The student's correction proved the challenged step (code's correct-work resolution), and the values it rests on.
+    resolved_by_correct_work: bool = False
+    validated_values: list[float] = []
+    # Code's reading of where the student stands (only PROBLEM_RESOLVED removes support), the values their own work has
+    # demonstrated in this cycle, and the first worked-solution step not yet demonstrated.
+    resolution_state: ResolutionState = "CURRENT_TARGET_UNRESOLVED"
+    demonstrated_values: list[float] = []
+    current_target: str | None = None
     mode: TeachMode
     gap_step: dict[str, Any] | None
     method: Strategy | None
@@ -234,13 +246,15 @@ class ReplySent(_Payload):
     method: Strategy | None
     shown_to_student: bool
     counts_as_hint: bool  # one hint is counted on the student's next answer
+    # Set when a long unresolved cycle offered the student the choice to stop (never a move to a fresh problem).
+    unresolved_policy: Literal["offer_exit"] | None = None
 
 
 class StateTransition(_Payload):
     event_type: Literal["STATE_TRANSITION"] = "STATE_TRANSITION"
     previous_phase: Phase
-    trigger: Literal["first_answer", "gap_repaired", "no_gap", "turn_cap", "verified", "not_yet", "not_yet_final",
-                     "exit"]
+    trigger: Literal["first_answer", "problem_resolved", "gap_repaired", "no_gap", "turn_cap", "verified", "not_yet",
+                     "not_yet_final", "exit"]  # gap_repaired, no_gap and turn_cap are no longer emitted
     new_phase: Phase
     status: SessionStatus
     practice_follow_up_id: UUID | None
@@ -249,7 +263,7 @@ class StateTransition(_Payload):
 
 class SupportRemoved(_Payload):
     event_type: Literal["SUPPORT_REMOVED"] = "SUPPORT_REMOVED"
-    reason: Literal["gap_repaired", "no_gap", "turn_cap"]
+    reason: Literal["problem_resolved", "gap_repaired", "no_gap", "turn_cap"]  # only problem_resolved is emitted now
     problem_id: UUID
     practice_follow_up_id: UUID | None  # the practice problem whose repair cycle just ended, if any
     main_gap: GapType | None
@@ -329,6 +343,17 @@ class TransferResult(_Payload):
     practice_follow_up_id: UUID | None  # the repair cycle that follows a first NOT YET works on this problem
 
 
+class JudgeConsistencyCheck(_Payload):
+    """The judge called a fresh-problem answer incorrect; code checked whether the student's own work holds."""
+
+    event_type: Literal["JUDGE_CONSISTENCY_CHECK"] = "JUDGE_CONSISTENCY_CHECK"
+    judge_correct: bool
+    judge_note: str
+    consistent: bool
+    reasons: list[str]  # why the work is not consistent (empty when it is)
+    overridden: bool  # the verdict was changed to correct (the student's consistent work outweighs the rubric)
+
+
 class SessionError(_Payload):
     event_type: Literal["SESSION_ERROR"] = "SESSION_ERROR"
     operation: TraceOperation
@@ -356,7 +381,8 @@ TracePayload = Annotated[
     Union[
         SessionStarted, StudentResponse, ModelCall, ReasoningRead, DiagnosisResult, TeachingGenerationStarted,
         TeachingGenerationResult, VerifierResult, TeachingFallback, ReplySent, StateTransition, SupportRemoved,
-        FollowUpStarted, FollowUpResult, FreshProblemGenerated, TransferResult, SessionError, SessionEnded,
+        FollowUpStarted, FollowUpResult, FreshProblemGenerated, TransferResult, JudgeConsistencyCheck, SessionError,
+        SessionEnded,
     ],
     Field(discriminator="event_type"),
 ]

@@ -7,7 +7,8 @@ You receive one JSON object:
 
 Return:
 - concept_name: the one concept the problem practises, short and general (two to five words, for example "Linear equations", "Fraction addition", "Newton's second law"). If one of known_concepts fits this problem, use exactly that name.
-- result: the final answer, with units if the problem has units. Short: a value with its units, a short expression, or a one-line statement.
-- steps: the worked solution as short ordered steps, each a single line, ending at the result.
+- steps: the worked solution as short ordered steps, each a single line, ending at the answer. Work them out before you write the result.
+- result: the final answer your last step reaches, with units if the problem has units. Short: a value with its units, a short expression, or a one-line statement.
+- expected_check: your answer in a form code can check, or null if the problem has no numeric answer. values: each quantity your answer states, as an exact number or an expression in quantities listed before it (for example {"w": "1 + sqrt(61)", "l": "2*w - 4"}; write sqrt, never a rounded decimal). conditions: every condition of the problem as an equation in those quantities, using the problem's own numbers (for example ["l = 2*w - 4", "w*l = 120"]). Code checks that every condition holds at your values; it does not trust your answer.
 
 Solve carefully and check your result. Use the problem's own numbers and conventions (for example a given value of g). Return only the structured output.

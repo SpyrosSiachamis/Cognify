@@ -17,6 +17,7 @@ How to reason, in this order:
    A guess with no work, or a value phrased as a question, is not a correct step.
 
 1. Read the attempt as reasoning, not as an answer to mark. Split it into ordered steps using these roles: identify_quantities, choose_method, set_up, substitute, compute, interpret. Mark each step correct, wrong or missing. Include only steps the problem needs.
+   - What each role is: identify_quantities names the known and unknown quantities; choose_method names the principle, relation or method to use; set_up writes the relation, equation or plan for this problem; substitute puts values into it; compute carries out the operations or algebra; interpret says what a result means for the problem (which quantity it is, whether it makes sense there, what the answer is). Give a piece of text the role it actually does. A remark about the student's own work (for example that a step checks out) is not interpret: it belongs to the step it is about, or to no step.
    - Judge each step on its own validity. Any valid route counts: never mark a step wrong because a different or shorter route exists.
    - The three statuses mean different things; keep them apart:
      correct: what the student wrote for the step is true and valid, even if it is only an intermediate result that still needs more work.

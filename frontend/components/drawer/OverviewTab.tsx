@@ -6,7 +6,7 @@ import { useApp } from "../AppProvider";
 const mmss = (s: number) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
 
 export function OverviewTab() {
-  const { state } = useApp();
+  const { state, replay } = useApp();
   const { session, views } = state;
   const learner = views.status === "ok" ? views.data.learner : null;
   const proven = learner ? provenConcepts(learner).length : null;
@@ -32,7 +32,7 @@ export function OverviewTab() {
       <div className="paper">
         <div className="side-title">
           <h3>This session</h3>
-          {state.log.length > 0 && <span className="pill ai">live</span>}
+          {state.log.length > 0 && <span className="pill ai">{replay ? "replay" : "live"}</span>}
         </div>
         {state.log.length ? (
           <ul className="tl">

@@ -1,0 +1,187 @@
+{
+ "problem": "A warehouse has 360 boxes.\n10% are damaged and removed.\nThe remaining boxes are divided between Storage A and Storage B in a 2:3 ratio.\nStorage A then receives 25% more boxes from a shipment.\nStorage B has 20% of its boxes replaced one-for-one, so its quantity does not change.\nFinally, 5% of the original boxes are transferred from Storage B to Storage A.\nHow many boxes are in each storage area at the end?",
+ "turns": [
+  "360 × 0.1 = 36, so 36 boxes are damaged.",
+  "2 + 3 = 5 parts, so each part is 324 ÷ 5 = 64.8. Storage A gets 2 parts, so 64.8 × 2 = 129.6, and Storage B gets 3 parts, so 64.8 × 3 = 194.4."
+ ],
+ "tutor_messages": [
+  null,
+  "You’ve calculated the damaged boxes correctly. Now, let’s lay out what we have next: 324 boxes remain and need to be split between Storage A and Storage B in a 2:3 ratio. \n\nDraw two columns for Storage A and Storage B. Label the ratio parts 2 for A and 3 for B. What does this setup tell you about how to divide the 324 boxes?"
+ ],
+ "proposals": [
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "360 boxes"
+    },
+    {
+     "role": "choose_method",
+     "status": "correct",
+     "quote": "10% are damaged and removed"
+    },
+    {
+     "role": "set_up",
+     "status": "correct",
+     "quote": "360 × 0.1"
+    },
+    {
+     "role": "compute",
+     "status": "correct",
+     "quote": "360 × 0.1 = 36"
+    },
+    {
+     "role": "interpret",
+     "status": "correct",
+     "quote": "so 36 boxes are damaged"
+    },
+    {
+     "role": "identify_quantities",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "compute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "interpret",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "choose_method",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "set_up",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "substitute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "compute",
+     "status": "missing",
+     "quote": null
+    },
+    {
+     "role": "interpret",
+     "status": "missing",
+     "quote": null
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "correctness",
+     "state": "strong",
+     "evidence": "The student correctly identified the total number of boxes, calculated 10% of them, and interpreted the result as the number of damaged boxes."
+    },
+    {
+     "name": "procedure",
+     "state": "strong",
+     "evidence": "The student correctly set up and performed the calculation for 10% of 360."
+    },
+    {
+     "name": "recognition",
+     "state": "strong",
+     "evidence": "The student recognized that 10% of the boxes are damaged and correctly chose the method to calculate it."
+    },
+    {
+     "name": "representation",
+     "state": "strong",
+     "evidence": "The student correctly translated the percentage into a decimal and applied it to the total number of boxes."
+    },
+    {
+     "name": "concept",
+     "state": "untested",
+     "evidence": "The student demonstrates understanding of percentages and their application to a total quantity."
+    },
+    {
+     "name": "strategy_choice",
+     "state": "untested",
+     "evidence": "The student has not yet demonstrated a choice of strategy for the remaining parts of the problem."
+    }
+   ],
+   "main_gap": "recognition",
+   "alternatives": [
+    {
+     "gap": "representation",
+     "confidence": "low"
+    }
+   ],
+   "confidence": "high",
+   "evidence": "sufficient",
+   "error": null,
+   "response_to": "original_problem"
+  },
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "2 + 3 = 5 parts"
+    },
+    {
+     "role": "set_up",
+     "status": "correct",
+     "quote": "each part is 324 ÷ 5 = 64.8"
+    },
+    {
+     "role": "compute",
+     "status": "correct",
+     "quote": "Storage A gets 2 parts, so 64.8 × 2 = 129.6, and Storage B gets 3 parts, so 64.8 × 3 = 194.4"
+    },
+    {
+     "role": "interpret",
+     "status": "missing",
+     "quote": null
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "representation",
+     "state": "fragile",
+     "evidence": "The student correctly identifies the ratio parts and calculates the value of each part, but does not recognize that boxes must be whole numbers, leading to a fractional result."
+    },
+    {
+     "name": "procedure",
+     "state": "strong",
+     "evidence": "The student correctly sets up the ratio division and performs the arithmetic operations accurately."
+    },
+    {
+     "name": "concept",
+     "state": "weak",
+     "evidence": "The student does not address the impracticality of fractional boxes, indicating a gap in understanding the real-world context of the problem."
+    },
+    {
+     "name": "correctness",
+     "state": "fragile",
+     "evidence": "The student's calculations are arithmetically correct but result in fractional boxes, which are not valid in this context."
+    }
+   ],
+   "main_gap": "concept",
+   "alternatives": [
+    {
+     "gap": "representation",
+     "confidence": "medium"
+    }
+   ],
+   "confidence": "high",
+   "evidence": "sufficient",
+   "error": {
+    "student_did": "calculated the number of boxes in Storage A and Storage B as 129.6 and 194.4, respectively, by dividing 324 boxes into 5 parts and multiplying by 2 and 3",
+    "actually_gives": "the number of boxes in each storage area after the initial division, expressed as decimals (129.6 and 194.4)",
+    "asked_for": "the number of boxes in each storage area after the initial division, expressed as whole boxes (since boxes cannot be fractional)",
+    "mismatch": "The student's calculation results in fractional boxes, but the problem involves whole boxes only, so the interpretation of the result must account for whole numbers."
+   },
+   "response_to": "tutor_question"
+  }
+ ]
+}

@@ -19,7 +19,9 @@ from .conftest import PROBLEM, SOLUTION
 from .fakes import FOLLOW_UP, FOLLOW_UP_OK, STUDENT_OK, FakeVerifier, ScriptedModel, diagnosis
 
 STALL = diagnosis(("compute", "correct", "2.04 s"), ("choose_method", "missing", None), gap="recognition")
-FOUND = diagnosis(("compute", "correct", "2.04 s"), ("choose_method", "correct", "v^2 = u^2 - 2gh"))
+# The repair turn also works the problem through to the answer: support is removed only when the problem is resolved.
+FOUND = diagnosis(("compute", "correct", "2.04 s"), ("choose_method", "correct", "v^2 = u^2 - 2gh"),
+                  ("compute", "correct", "h = 20.4 m"))
 REJECT_FOLLOW_UP = {"mode": "follow_up_check", "approved": False, "reason": "invalid_followup",
                     "note": "It does not exercise choose_method."}
 
@@ -147,7 +149,8 @@ def run_session(store, texts, student_checks=(STUDENT_OK,)):
     return sid, turns, model
 
 
-ANSWERS = ["I found the time, about 2.04 s, but not the height.", "With 2.04 s known I could use v^2 = u^2 - 2gh.",
+ANSWERS = ["I found the time, about 2.04 s, but not the height.",
+           "With 2.04 s known I could use v^2 = u^2 - 2gh, so h = 20.4 m.",
            "v^2 = u^2 - 2gh with v = 0 and u = 15, so h = 225 / 19.6, about 11.5 m."]
 
 

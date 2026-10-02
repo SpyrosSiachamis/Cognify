@@ -118,6 +118,15 @@ def test_the_same_request_is_not_repeated_after_the_student_answered_it_with_wor
     assert explain(bare, "€40", previous=asked) == (asked, "missing_reasoning")
 
 
+def test_an_answer_to_the_tutors_sub_question_is_read_as_work_and_asked_for_the_next_step():
+    """From the jacket session: "$120 + $8 = $128" answering the tutor's question is recognised work, so the
+    fallback moves on to the next operation instead of saying the working could not be matched."""
+    d = read(("compute", "correct", "$120 + $8 = $128"), ("set_up", "missing", None), response_to="tutor_question")
+    reply, kind = explain(d, "$120. The $8 shipping fee is added to the discounted price, so $120 + $8 = $128.",
+                          gap_step=Step(role="set_up", status="missing"))
+    assert kind == "missing_step" and '"$120 + $8 = $128"' in reply and "could not match" not in reply
+
+
 def test_nothing_to_go_on_gets_a_neutral_request_that_claims_nothing():
     d = read(("choose_method", "missing", None), gap=None, evidence="insufficient", confidence="low",
              response_to="acknowledgement")

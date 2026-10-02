@@ -10,6 +10,7 @@ import pytest
 
 from app.ai_gateway import gateway
 from app.seed.data import MARIA_ID, NIKOS_ID
+from app.session.schema import Solution
 from app.tutor.agent import MAX_REGENERATIONS, AgentTutor, final_answers
 from app.tutor.fallback import explain_fallback
 from app.tutor.language import ACKNOWLEDGE_REPLY, student_language, written_in
@@ -86,7 +87,7 @@ def test_teaching_is_aimed_at_the_gap_step(store):
 
 def test_correct_work_has_no_gap_and_no_teaching(store):
     model, verifier = ScriptedModel([CORRECT]), FakeVerifier()
-    trace, result = run(store, model, verifier, request=teach_request("At the highest point, v = 0, so h = 20.4 m."))
+    trace, result = run(store, model, verifier, request=teach_request("At the highest point, v = 0, so with v^2 = u^2 - 2gh, h = 20.4 m."))
     assert result.output.main_gap is None
     assert result.method is None
     assert model.teaching_calls == 0 and verifier.inputs == []
@@ -209,11 +210,38 @@ def test_gap_step_prefers_the_first_wrong_step():
 
 
 def test_a_repaired_gap_is_acknowledged_not_retaught(store):
+    # Only a resolved problem is acknowledged: the repair here also carries the work to the answer (20.4 m).
+    prior = PriorDiagnosis(steps=[MISSING], main_gap="recognition")
+    now = diagnosis(("choose_method", "correct", "h = ut + 1/2 at^2"), ("compute", "correct", "h = 20.4 m"), gap=None)
+    model = ScriptedModel([now])
+    trace, result = run(store, model, request=teach_request("h = ut + 1/2 at^2, so with u = 20 I get h = 20.4 m.",
+                                                             prior=prior))
+    assert result.output.gap_repaired and model.teaching_calls == 0 and trace.mode == "acknowledge"
+
+
+def test_a_repaired_gap_short_of_the_answer_is_probed_not_retaught(store):
+    # The repaired step is not taught again; with the problem still open the reply asks about the next step.
     prior = PriorDiagnosis(steps=[MISSING], main_gap="recognition")
     now = diagnosis(("choose_method", "correct", "h = ut + 1/2 at^2"), ("substitute", "missing", None), gap="procedure")
-    model = ScriptedModel([now])
-    _, result = run(store, model, request=teach_request("h = ut + 1/2 at^2, so I can use u = 20.", prior=prior))
-    assert result.output.gap_repaired and model.teaching_calls == 0
+    model = ScriptedModel([now], replies=["What do you know at the very top?"])
+    trace, result = run(store, model, request=teach_request("h = ut + 1/2 at^2, so I can use u = 20.", prior=prior))
+    assert result.output.gap_repaired and trace.mode == "probe"
+    assert model.teaching_calls == 1 and model.teaching_inputs[0]["mode"] == "probe"
+
+
+def test_teaching_sees_its_last_move_and_the_steps_already_shown(store):
+    # Without them the reply asks again for work the student already did (the rectangle loop: w, then w + 2, then
+    # w(w+2) = 48, then "how did you choose w and w+2?"). Each shown step is passed once.
+    earlier = [Step(role="identify_quantities", status="correct", quote="Let the width be w"),
+               Step(role="set_up", status="correct", quote="w(w+2)=48")]
+    model = ScriptedModel([STALL])
+    run(store, model, request=teach_request(
+        "w(w+2)=48", first_thought=False, tutor_message="What equation could you write?",
+        validated_steps=[*earlier, earlier[1], Step(role="compute", status="wrong", quote="w = 8")],
+    ))
+    sent = model.teaching_inputs[0]
+    assert sent["tutor_message"] == "What equation could you write?"
+    assert [s["quote"] for s in sent["already_shown"]] == ["Let the width be w", "w(w+2)=48"]
 
 
 # ---- choose_strategy ----
@@ -498,7 +526,7 @@ def test_one_tutor_serving_two_students_keeps_their_turns_apart(store):
     async def both():
         return await asyncio.gather(
             tutor.teach_with_trace(teach_request()),
-            tutor.teach_with_trace(teach_request("At the highest point, v = 0, so h = 20.4 m.")),
+            tutor.teach_with_trace(teach_request("At the highest point, v = 0, so with v^2 = u^2 - 2gh, h = 20.4 m.")),
         )
 
     (first, first_trace), (second, second_trace) = asyncio.run(both())
@@ -585,7 +613,9 @@ def test_unnarrated_steps_in_correct_work_are_not_missing(store):
 
 def test_a_genuinely_incomplete_solution_keeps_its_missing_step(store):
     incomplete = diagnosis(("compute", "correct", "t = 2.04 s"), ("choose_method", "missing", None), gap="recognition")
-    trace, result = run(store, ScriptedModel([incomplete]), request=teach_request(CORRECT_ATTEMPT))
+    # The answer really is incomplete (the height is never worked out), so it stays a gap, not a resolved problem.
+    trace, result = run(store, ScriptedModel([incomplete]),
+                        request=teach_request("0 = 20 - 9.8t, so t = 2.04 s, but I do not know the height."))
     assert ("choose_method", "missing") in [(s.role, s.status) for s in result.output.steps]
     assert result.output.main_gap == "recognition" and trace.mode == "teach"
 
@@ -608,9 +638,14 @@ def test_an_unexplained_wrong_label_twice_becomes_a_probe_not_a_gap(store):
 
 def test_an_implied_step_without_a_quote_is_not_observed_not_a_failure(store):
     # Concise work: the model marks the method correct but the student never wrote it out.
-    concise = diagnosis(("choose_method", "correct", None), ("compute", "correct", "(20 - 5) / 3 = 5"), gap=None)
+    # The work reaches the answer (15, then x = 5), so it is acknowledged as a resolved problem.
+    concise = diagnosis(("choose_method", "correct", None), ("compute", "correct", "21 - 6 = 15 and 15 / 3 = 5"),
+                        gap=None)
     model = ScriptedModel([concise])
-    trace, result = run(store, model, request=teach_request("x = (20 - 5) / 3 = 5"))
+    solution = Solution(result="x = 5", steps=["3x = 21 - 6 = 15.", "x = 15 / 3 = 5."])
+    trace, result = run(store, model, request=teach_request(
+        "21 - 6 = 15 and 15 / 3 = 5, so x = 5", problem="Solve 3x + 6 = 21.", solution=solution,
+        concept_name="Linear equations"))
     assert model.reasoning_calls == 1  # accepted first time: no validation failure, no retry
     assert [(s.role, s.status) for s in result.output.steps] == [("compute", "correct")]
     assert trace.mode == "acknowledge" and trace.diagnosis_failure is None

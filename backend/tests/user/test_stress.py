@@ -60,6 +60,8 @@ class ChaosTutor(StubTutor):
         kind = self.rng.choice(["gap", "gap", "probe", "no_gap"])
         if kind == "gap":
             result.output.gap_repaired = self._roll(0.3)
+            # A repair here finishes the stub's whole problem, so that is when support may go.
+            result.output.resolution = "PROBLEM_RESOLVED" if result.output.gap_repaired else "CURRENT_TARGET_UNRESOLVED"
         elif kind == "probe":  # not enough evidence yet: a question, no method, no gap
             output = TutorTeachingOutput(
                 steps=[Step(role="choose_method", status="missing")], main_gap=None, confidence="low",
@@ -70,6 +72,7 @@ class ChaosTutor(StubTutor):
             output = TutorTeachingOutput(
                 steps=[Step(role="choose_method", status="correct", quote="v^2 = u^2 - 2gh")], main_gap=None,
                 confidence="high", evidence="sufficient", gap_repaired=False, reply="Every step holds.",
+                resolution="PROBLEM_RESOLVED",
             )
             return TeachResult(output=output, method=None, reply_check=result.reply_check)
         return result

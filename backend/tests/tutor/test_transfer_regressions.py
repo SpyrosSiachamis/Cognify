@@ -42,6 +42,10 @@ FIRST = ("There are 36 books and 12 are removed, so 36 - 12 = 24 books remain. T
          "among 6 shelves: 24 ÷ 6 = 5. So there are 5 books on each shelf.")
 LEAST_SURE = "I'm least sure about the division step. I thought 24 divided by 6 was 5."
 WORKED = "10 ÷ 2 = 5, so 24 ÷ 6 = 4."
+# The student's answers once the turn count no longer ends teaching: only work that resolves the problem moves on.
+EXAMPLE_ANSWER = "10 ÷ 2 = 5."
+TABLE_ANSWER = "24 are left, and 24 ÷ 6 = 4, so 4 books on each shelf."
+SOLVED_TEXT = "36 - 12 = 24 and 24 ÷ 6 = 4, so 4 books."
 FRESH_ANSWER = ("There are 50 cookies and 14 are packed into the gift box, so 50 - 14 = 36 cookies remain. Then I divide "
                 "36 equally among 4 containers: 36 ÷ 4 = 9. So there are 9 cookies in each container.")
 
@@ -60,10 +64,16 @@ def proc(*steps, gap="procedure", **extra) -> dict:
 
 WRONG_DIVISION = proc(("compute", "correct", "36 - 12 = 24 books remain"), ("compute", "wrong", "24 ÷ 6 = 5"))
 STILL_WRONG = proc(("compute", "wrong", "24 divided by 6 was 5"))
-# Turn 3 as the live session read it: the division fixed, but the answer not yet interpreted, so the tutor kept
-# teaching (with a table). Scripts here must satisfy the real rules (a gap shows at its step), or the reasoning
-# step retries and the scripted model would serve the next turn's output; each test checks there was no retry.
-NOT_YET_REPAIRED = proc(("compute", "correct", "24 ÷ 6 = 4"), ("substitute", "missing", None), gap="procedure")
+# Turn 3: the live session's "10 ÷ 2 = 5, so 24 ÷ 6 = 4." now resolves the problem (24 and 4 demonstrated), so the
+# chain below has the student answer only the worked example, and the tutor keeps teaching (with a table). Scripts
+# here must satisfy the real rules (a gap shows at its step), or the reasoning step retries and the scripted model
+# would serve the next turn's output; each test checks there was no retry.
+EXAMPLE_ONLY = proc(("compute", "correct", "10 ÷ 2 = 5"), gap="procedure", response_to="other_problem")
+# The answer to the table that finishes the problem: the division and what it counts (resolves it; no reply follows).
+TABLE_SOLVED = proc(("compute", "correct", "24 ÷ 6 = 4"), ("interpret", "correct", "4 books on each shelf"), gap=None,
+                    response_to="tutor_question")
+# The whole chain worked: every required step and the final value demonstrated, so the fresh problem follows.
+SOLVED = proc(("compute", "correct", "36 - 12 = 24"), ("compute", "correct", "24 ÷ 6 = 4"), gap=None)
 # The same answer read as a repair: the procedure gap is gone, the answer just needs interpreting.
 REPAIRED = proc(("compute", "correct", "24 ÷ 6 = 4"), ("interpret", "missing", None), gap="representation")
 # "24" to "how many books are left?", read the way the live model read it: as a final answer with a new gap.
@@ -72,12 +82,12 @@ BOOKS_LEFT = proc(("compute", "correct", "24"), ("interpret", "missing", None), 
 
 
 def rig(store, diagnoses, replies, verifier_results, student_check=STUDENT_OK, raise_on=None, setup=BOOKS_SETUP,
-        follow_ups=(COOKIES,), student_checks=None):
+        follow_ups=(COOKIES,), student_checks=None, problem=BOOKS):
     model = ScriptedModel(diagnoses, replies=replies, setup=setup, follow_ups=list(follow_ups), raise_on=raise_on)
     verifier = FakeVerifier(*verifier_results, follow_up_checks=[FOLLOW_UP_OK],
                             student_checks=student_checks or [student_check])
     svc = SessionService(AgentTutor(store, model.model, verifier.model), store)
-    sid = asyncio.run(svc.start(SessionStartRequest(problem=BOOKS, student_id=MARIA_ID))).session_id
+    sid = asyncio.run(svc.start(SessionStartRequest(problem=problem, student_id=MARIA_ID))).session_id
     return svc, sid, model, verifier
 
 
@@ -103,7 +113,7 @@ def test_a_cookie_transfer_after_fallback_worked_example_and_table_is_verified(s
     verified_before(store)
     svc, sid, model, verifier = rig(
         store,
-        [WRONG_DIVISION, STILL_WRONG, NOT_YET_REPAIRED, BOOKS_LEFT],
+        [WRONG_DIVISION, STILL_WRONG, EXAMPLE_ONLY, TABLE_SOLVED],
         # Turn 1's rejected drafts use two reply slots (the third retry repeats the second's input, which the scripted
         # model does not count again); the worked example and the table follow.
         replies=["(rejected draft 1)", "(rejected draft 2)", WORKED_EXAMPLE, TABLE, "unused"],
@@ -113,10 +123,10 @@ def test_a_cookie_transfer_after_fallback_worked_example_and_table_is_verified(s
     assert t1.reply_check.outcome == "verifier_rejected" and t1.method is None  # the fallback: no method shown
     t2 = send(svc, sid, LEAST_SURE)
     assert t2.hints_used == 0 and t2.reply_check.outcome == "approved" and t2.message == WORKED_EXAMPLE
-    t3 = send(svc, sid, WORKED)
+    t3 = send(svc, sid, EXAMPLE_ANSWER)
     assert t3.hints_used == 1 and t3.message == TABLE
-    fresh = send(svc, sid, "24")  # turn cap: the fresh problem replaces this turn's reply
-    assert model.reasoning_inputs[-1]["tutor_message"] == TABLE  # "24" was read as the answer to the table
+    fresh = send(svc, sid, TABLE_ANSWER)  # resolved: the fresh problem replaces this turn's reply
+    assert model.reasoning_inputs[-1]["tutor_message"] == TABLE  # read as the answer to the table
     assert fresh.phase == "stress_test" and fresh.hints_used == 2
     verdict = send(svc, sid, FRESH_ANSWER)
     assert isinstance(verdict, VerdictTurn)
@@ -140,12 +150,12 @@ def test_a_when_the_repair_is_recognised_the_fresh_problem_comes_with_one_hint(s
 
 
 def test_a_the_verdict_credits_the_last_delivered_move_of_this_cycle(store):
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION, STILL_WRONG, NOT_YET_REPAIRED, BOOKS_LEFT],
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION, STILL_WRONG, EXAMPLE_ONLY, TABLE_SOLVED],
                          replies=["a", "b", "c", "d"], verifier_results=[REJECT, REJECT, REJECT, APPROVE])
-    for text in (FIRST, LEAST_SURE, WORKED, "24"):
+    for text in (FIRST, LEAST_SURE, EXAMPLE_ANSWER, TABLE_ANSWER):
         send(svc, sid, text)
     decisions = store.list_strategy_decisions(sid)
-    assert len(decisions) == 2  # the worked example and the table; the fallback and the capped reply were never shown
+    assert len(decisions) == 2  # the worked example and the table; the fallback and the resolved turn taught nothing
     verdict = send(svc, sid, FRESH_ANSWER).verdict
     assert verdict.changes.strategy.method == decisions[-1].method
     after, before = verdict.changes.strategy.after, verdict.changes.strategy.before
@@ -156,8 +166,8 @@ def test_a_the_verdict_credits_the_last_delivered_move_of_this_cycle(store):
 
 
 def test_f_three_fallback_turns_use_no_hint(store):
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 4, replies=["x"], verifier_results=[REJECT])
-    for text in (FIRST, "Again 24 ÷ 6 = 5.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 3 + [SOLVED], replies=["x"], verifier_results=[REJECT])
+    for text in (FIRST, "Again 24 ÷ 6 = 5.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):  # three fallbacks, then solved
         turn = send(svc, sid, text)
     assert turn.phase == "stress_test" and turn.hints_used == 0
     assert store.list_strategy_decisions(sid) == []  # no method was delivered, none is credited
@@ -167,8 +177,9 @@ def test_f_three_fallback_turns_use_no_hint(store):
 def test_f_three_approved_teaching_moves_exceed_the_limit(store):
     """F16 is unchanged: help that reached the student counts, and too much of it is NOT YET even when right."""
     verified_before(store)
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 4, replies=["m1", "m2", "m3", "m4"], verifier_results=[APPROVE])
-    for text in (FIRST, "Again 24 ÷ 6 = 5.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 3 + [SOLVED], replies=["m1", "m2", "m3", "m4"],
+                         verifier_results=[APPROVE])
+    for text in (FIRST, "Again 24 ÷ 6 = 5.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):  # three moves, then solved
         turn = send(svc, sid, text)
     assert turn.phase == "stress_test" and turn.hints_used == 3 > MAX_HINTS_FOR_VERIFIED
     v = send(svc, sid, FRESH_ANSWER).verdict
@@ -208,10 +219,11 @@ def test_f_a_failed_turn_keeps_the_owed_hint_and_adds_none(store):
 
 
 def test_f_the_reply_replaced_by_the_fresh_problem_is_not_credited(store):
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 4, replies=["m1", "m2", "m3", "m4"], verifier_results=[APPROVE])
-    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 3 + [SOLVED], replies=["m1", "m2", "m3", "m4"],
+                         verifier_results=[APPROVE])
+    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):
         send(svc, sid, text)
-    assert len(store.list_strategy_decisions(sid)) == 3  # the 4th reply was never shown
+    assert len(store.list_strategy_decisions(sid)) == 3  # the resolving turn's reply is the fresh problem, no move
     assert store.get_session(sid).last_reply_taught is False
 
 
@@ -284,8 +296,9 @@ def test_a_partial_answer_with_no_gap_being_taught_does_not_skip_to_another_fres
     answer to part of the problem is not the whole solution: it must not send the student to a new fresh problem."""
     correct = proc(("compute", "correct", "36 - 12 = 24"), ("compute", "correct", "24 ÷ 6 = 4"), gap=None)
     part = proc(("compute", "correct", "36 - 12 = 24"), gap=None, response_to="tutor_question")
+    # After the NOT YET the cookies problem is the one being repaired, so the set-up solves it (not the books again).
     svc, sid, model, _ = rig(store, [correct, part], replies=["What would you try next?"], verifier_results=[APPROVE],
-                             student_check={**STUDENT_OK, "correct": False})
+                             student_check={**STUDENT_OK, "correct": False}, setup=[BOOKS_SETUP, COOKIES_SETUP])
     assert send(svc, sid, "36 - 12 = 24 and 24 ÷ 6 = 4, so 4 books.").phase == "stress_test"
     assert send(svc, sid, "36 ÷ 4 = 8").verdict.result == "NOT YET"
     turn = send(svc, sid, "36 - 12 = 24")
@@ -294,6 +307,10 @@ def test_a_partial_answer_with_no_gap_being_taught_does_not_skip_to_another_fres
 
 
 # ---- H: after a NOT YET the failed fresh problem is the problem being repaired ----
+
+COOKIES_SETUP = {"concept_name": "Division of whole numbers", "result": "9 cookies",
+                 "steps": ["50 - 14 = 36 cookies remain.", "36 ÷ 4 = 9.", "9 cookies in each container."]}
+COOKIES_SOLVED = proc(("compute", "correct", "50 - 14 = 36"), ("compute", "correct", "36 ÷ 4 = 9"), gap=None)
 
 APPLES = {
     "problem": "A farmer has 45 apples in a basket. He sells 19 apples at the market. How many apples are left in "
@@ -407,12 +424,20 @@ def test_h_context_and_hints_have_separate_lifecycles(store):
 
 
 DERIVED = proc(("compute", "correct", "24 ÷ 6 = 4"), ("interpret", "missing", None), gap="representation")
+# On the books problem "24 ÷ 6 = 4" now resolves the problem (24 and 4 demonstrated) and the fresh problem follows,
+# so the leak guard is exercised on the same problem one step longer: the division shows the final 4 while the
+# 41 - 5 = 36 step is still open, and the tutor keeps replying.
+LONGER = ("A box contains 41 books. 5 damaged books are thrown away, then 12 books are removed. The remaining books "
+          "are placed equally on 6 shelves. How many books are on each shelf?")
+LONGER_SETUP = {"concept_name": "Division of whole numbers", "result": "4 books",
+                "steps": ["41 - 5 = 36 books are left.", "36 - 12 = 24 books remain.", "24 ÷ 6 = 4.",
+                          "4 books on each shelf."]}
 
 
 def test_d_repeating_the_students_own_result_is_not_a_leak(store):
     derived = DERIVED
     svc, sid, model, verifier = rig(store, [derived], replies=["Exactly — 24 ÷ 6 = 4. What does that 4 tell you?"],
-                                verifier_results=[APPROVE])
+                                verifier_results=[APPROVE], problem=LONGER, setup=LONGER_SETUP)
     turn = send(svc, sid, "24 ÷ 6 = 4")
     assert turn.reply_check.outcome == "approved" and "24 ÷ 6 = 4" in turn.message
     assert verifier.inputs[0]["student_demonstrated"] == ["24 ÷ 6 = 4"]  # the model check is told what they derived
@@ -423,7 +448,7 @@ def test_d_a_result_derived_in_an_earlier_turn_may_be_confirmed(store):
     stuck = proc(("interpret", "missing", "not sure what it means"), gap="representation")
     svc, sid, model, verifier = rig(store, [DERIVED, stuck],
                                     replies=["So what does it mean?", "Yes, 24 ÷ 6 = 4. What is that 4 counting?"],
-                                    verifier_results=[APPROVE])
+                                    verifier_results=[APPROVE], problem=LONGER, setup=LONGER_SETUP)
     send(svc, sid, "24 ÷ 6 = 4")
     turn = send(svc, sid, "I'm not sure what it means.")
     assert turn.reply_check.outcome == "approved" and "24 ÷ 6 = 4" in turn.message
@@ -434,7 +459,7 @@ def test_d_the_unit_the_student_never_stated_is_still_theirs_to_find(store):
     """Deriving "24 ÷ 6 = 4" shows the 4, not that it is 4 books per shelf: handing over "4 books" is a leak."""
     stuck = proc(("interpret", "missing", "not sure what it means"), gap="representation")
     svc, sid, _, _ = rig(store, [DERIVED, stuck], replies=["So what does it mean?", "You found 4 books per shelf."],
-                         verifier_results=[APPROVE])
+                         verifier_results=[APPROVE], problem=LONGER, setup=LONGER_SETUP)
     send(svc, sid, "24 ÷ 6 = 4")
     turn = send(svc, sid, "I'm not sure what it means.")
     assert turn.reply_check.outcome == "verifier_rejected" and "4 books" not in turn.message
@@ -464,8 +489,8 @@ def test_e_a_quantity_given_in_the_problem_is_never_demonstrated():
 
 def test_g_a_failed_judgement_records_nothing_and_keeps_a_verified_concept(store):
     verified_before(store)
-    svc, sid, model, verifier = rig(store, [WRONG_DIVISION] * 4, replies=["m"], verifier_results=[REJECT])
-    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    svc, sid, model, verifier = rig(store, [WRONG_DIVISION] * 3 + [SOLVED], replies=["m"], verifier_results=[REJECT])
+    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):
         send(svc, sid, text)
     verifier.student_checks = [{"mode": "student_check"}]  # an invalid check: the verifier call fails
     with pytest.raises(ApiError) as failed:
@@ -478,9 +503,9 @@ def test_g_a_failed_judgement_records_nothing_and_keeps_a_verified_concept(store
 
 def test_g_a_genuinely_incorrect_answer_still_downgrades(store):
     verified_before(store)
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 4, replies=["m"], verifier_results=[REJECT],
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 3 + [SOLVED], replies=["m"], verifier_results=[REJECT],
                          student_check={**STUDENT_OK, "correct": False, "reasoning_quality": "weak"})
-    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):
         send(svc, sid, text)
     v = send(svc, sid, "36 ÷ 4 = 8").verdict
     assert v.result == "NOT YET" and (v.changes.concept.before, v.changes.concept.after) == ("verified", "fragile")
@@ -515,9 +540,9 @@ def test_the_verdict_credits_the_last_delivered_move_not_the_first(store):
     # Still the wrong division (so the procedure gap is not repaired), now also read as a representation gap.
     representation = proc(("compute", "wrong", "24 ÷ 6 = 5"), ("interpret", "wrong", "so 5 books"),
                           gap="representation")
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION, representation, representation, representation],
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION, representation, representation, SOLVED],
                          replies=["a", "b", "c", "d"], verifier_results=[APPROVE])
-    for text in (FIRST, "24 ÷ 6 = 5, so 5 books.", "Still 24 ÷ 6 = 5, so 5 books.", "24 ÷ 6 = 5, so 5 books."):
+    for text in (FIRST, "24 ÷ 6 = 5, so 5 books.", "Still 24 ÷ 6 = 5, so 5 books.", SOLVED_TEXT):
         send(svc, sid, text)
     decisions = store.list_strategy_decisions(sid)
     assert (decisions[0].gap_type, decisions[-1].gap_type) == ("procedure", "representation")
@@ -528,13 +553,15 @@ def test_the_verdict_credits_the_last_delivered_move_not_the_first(store):
 def test_a_cycle_that_delivered_nothing_credits_no_method_from_an_earlier_cycle(store):
     """Cycle 1 delivers one move and ends NOT YET (it is credited then). Cycle 2 is all fallbacks and ends VERIFIED:
     no method is credited for that success."""
-    svc, sid, model, verifier = rig(store, [WRONG_DIVISION] * 8, replies=["m"],
-                                    verifier_results=[APPROVE] + [REJECT] * 60, student_check={**STUDENT_OK, "correct": False})
+    # Each cycle ends on a resolving answer; cycle 2 repairs the cookies problem, which the set-up solves.
+    svc, sid, model, verifier = rig(store, [WRONG_DIVISION] * 3 + [SOLVED] + [WRONG_DIVISION] * 3 + [COOKIES_SOLVED],
+                                    replies=["m"], verifier_results=[APPROVE] + [REJECT] * 60,
+                                    student_check={**STUDENT_OK, "correct": False}, setup=[BOOKS_SETUP, COOKIES_SETUP])
     verifier.student_checks = [{**STUDENT_OK, "correct": False}, STUDENT_OK]
     # A second fresh problem: the first one has been seen, and a repeat is refused.
     model.follow_ups = [COOKIES, {**COOKIES, "problem": "A teacher has 45 pencils. She keeps 5. The rest are shared "
                                   "equally among 8 students. How many pencils does each student get?"}]
-    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):
         send(svc, sid, text)
     first = send(svc, sid, "36 ÷ 4 = 8").verdict
     assert first.result == "NOT YET" and first.changes.strategy is not None
@@ -542,7 +569,7 @@ def test_a_cycle_that_delivered_nothing_credits_no_method_from_an_earlier_cycle(
     stats = lambda: {(x.gap_type, x.method): (x.uses, x.independent_successes) for x in store.strategy_stats(MARIA_ID)}
     after_first = stats()[credited]
     assert svc._earlier_correct_steps(store.get_session(sid)) == []  # cycle 1's work is not cycle 2's evidence
-    for text in ("Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think.", "24 ÷ 6 = 5."):
+    for text in ("Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think.", "50 - 14 = 36 and 36 ÷ 4 = 9, so 9 cookies."):
         send(svc, sid, text)
     second = send(svc, sid, FRESH_ANSWER).verdict
     assert second.result == "VERIFIED" and second.changes.strategy is None
@@ -600,8 +627,8 @@ def test_an_invalid_outcome_writes_nothing(store, monkeypatch):
     """The outcome is built (validated) before the attempt, the check and the verdict are written."""
     import app.user.service as service_module
 
-    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 4, replies=["m"], verifier_results=[REJECT])
-    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", "24 ÷ 6 = 5, I think."):
+    svc, sid, _, _ = rig(store, [WRONG_DIVISION] * 3 + [SOLVED], replies=["m"], verifier_results=[REJECT])
+    for text in (FIRST, "Again.", "Still 24 ÷ 6 = 5.", SOLVED_TEXT):
         send(svc, sid, text)
     checks_before = len(store._checks)
 
