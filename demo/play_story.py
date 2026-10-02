@@ -3,21 +3,27 @@
 
     python demo/play_story.py                       # both learners against localhost:8000
     python demo/play_story.py --student maria
-    python demo/play_story.py --shape-only          # real model: check shapes and rules, not exact wording
+    python demo/play_story.py --shape-only          # real model: check rules and consistency, not exact wording
 
 Standard library only, so it runs anywhere. It PLAYS REAL SESSIONS: Maria and Nikos end up with
 one more verified run in the history. Restart the backend afterwards to reset the seeded demo
 (the in-memory store reloads the seed at startup). It refuses non-local addresses unless you
 pass --allow-remote, so the public demo is never changed by accident.
 
-Exit code 0 when every check passed, 1 otherwise. Experiments (--force_experiment) are only
-reported: the stub tutor does not run them.
+With --shape-only (the real model writes its own follow-up, so the canned answer is not a real solution)
+either verdict is fine. The script then checks that everything agrees with the verdict it got: counts, concept
+state, the two views, and whether the session is over. A 503 that says retryable is retried with the same
+text, like the frontend's "Try again", and the hint count must not grow because of it.
+
+Exit code 0 when every check passed, 1 otherwise (2: wrong address or backend unreachable). Experiments
+(--force_experiment) are only reported: the stub tutor does not run them.
 """
 
 import argparse
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlparse
@@ -77,6 +83,17 @@ class Run:
         except urllib.error.HTTPError as err:
             return err.code, json.loads(err.read() or b"{}")
 
+    def attempt(self, sid: str, text: str, tries: int = 4) -> tuple[int, dict, int]:
+        """Send an attempt. A retryable 503 is sent again with the same text. Returns (status, body, retries)."""
+        for retry in range(tries):
+            status, body = self.call("POST", f"/api/session/{sid}/attempt", {"text": text})
+            error = body.get("error", {}) if isinstance(body, dict) else {}
+            if status != 503 or not error.get("retryable") or retry == tries - 1:
+                return status, body, retry
+            print(f"  ....  the backend said {error.get('code')} (retryable), trying again with the same answer")
+            time.sleep(1)
+        raise AssertionError("unreachable")
+
     def check(self, name: str, ok: bool, detail: object = "", strict_only: bool = False) -> bool:
         if strict_only and self.shape_only:
             return True
@@ -113,7 +130,7 @@ def play(run: Run, story: dict) -> str | None:
     run.check("asks for a first thought, no help yet", start["phase"] == "ask_first_thought" and start["hints_used"] == 0, start)
     run.check("the question is the first-thought prompt", "try first" in start["message"].lower(), start["message"], True)
 
-    status, turn = run.call("POST", f"/api/session/{sid}/attempt", {"text": story["turns"][0]})
+    status, turn, _ = run.attempt(sid, story["turns"][0])
     run.check("first thought gets a teaching turn", status == 200 and turn.get("phase") == "teach", (status, turn))
     run.no_leaks("teaching turn", turn)
     diagnosis, method = turn.get("diagnosis") or {}, turn.get("method") or {}
@@ -125,19 +142,20 @@ def play(run: Run, story: dict) -> str | None:
     run.check("no hint used yet", turn.get("hints_used") == 0, turn.get("hints_used"), True)
 
     follow_up = None
-    for text in story["turns"][1:]:
-        status, turn = run.call("POST", f"/api/session/{sid}/attempt", {"text": text})
+    # The stub needs one more reply; the real model may need up to the backend's cap of teaching turns.
+    for text in [*story["turns"][1:], *[story["turns"][-1]] * 4]:
+        hints_before = turn.get("hints_used", 0)
+        status, turn, retried = run.attempt(sid, text)
         run.check("student reply is accepted", status == 200, (status, turn))
+        if status != 200:
+            return None
         run.no_leaks("next turn", turn)
+        if retried:  # the failed request must not have cost the student a hint
+            run.check("a retried request did not cost an extra hint", turn.get("hints_used", 0) <= hints_before + 1,
+                      (hints_before, turn.get("hints_used")))
         if turn.get("phase") == "stress_test":
             follow_up = turn["follow_up"]["problem"]
             break
-    if follow_up is None:  # the real model may need more teaching turns
-        for _ in range(4):
-            status, turn = run.call("POST", f"/api/session/{sid}/attempt", {"text": story["turns"][-1]})
-            if turn.get("phase") == "stress_test":
-                follow_up = turn["follow_up"]["problem"]
-                break
     appeared = run.check("support is removed: the stress test appears", follow_up is not None, turn)
     if follow_up is None or not appeared:
         return None
@@ -146,7 +164,7 @@ def play(run: Run, story: dict) -> str | None:
     run.check("the stress test shows only the problem", set(turn["follow_up"]) == {"problem"}, turn["follow_up"])
     run.check("one hint was needed", turn["hints_used"] == 1, turn["hints_used"], True)
 
-    status, verdict = run.call("POST", f"/api/session/{sid}/attempt", {"text": story["stress"]})
+    status, verdict, _ = run.attempt(sid, story["stress"])
     run.check("the answer gets a verdict", status == 200 and verdict.get("phase") == "verdict", (status, verdict))
     result = verdict.get("verdict") or {}
     run.check("VERIFIED, decided by code", result.get("result") == "VERIFIED", result.get("result"), True)
@@ -157,14 +175,45 @@ def play(run: Run, story: dict) -> str | None:
         verdict,
     )
     changes = result.get("changes") or {}
-    run.check("the concept moves to verified", (changes.get("concept") or {}).get("after") == "verified", changes.get("concept"))
     strategy = changes.get("strategy") or {}
+    over = verdict.get("session_over") is True
+
+    if run.shape_only:
+        print(f"  info  verdict: {result.get('result')}, session {'over' if over else 'continues'}")
+        run.check("the verdict is VERIFIED or NOT YET", result.get("result") in ("VERIFIED", "NOT YET"), result.get("result"))
+        concept_after = (changes.get("concept") or {}).get("after")
+        run.check("the concept is verified exactly when the answer was VERIFIED", (concept_after == "verified") == verified, changes.get("concept"))
+        run.check("a NOT YET names what is still missing", verified or bool(result.get("remaining_gap")) or not strategy, result)
+        if strategy:
+            gap, method = strategy.get("gap", ""), strategy.get("method", "")
+            b_, a_ = strategy.get("before", {}), strategy.get("after", {})
+            run.check(
+                "strategy counts moved by one use, and one success only if VERIFIED",
+                a_.get("uses") == b_.get("uses", 0) + 1 and a_.get("independent_successes") == b_.get("independent_successes", 0) + int(verified),
+                (b_, a_),
+            )
+            row = strategy_row(run, student, gap, method)
+            run.check("How You Learn shows the same counts as the verdict",
+                      (row["uses"], row["independent_successes"]) == (a_.get("uses"), a_.get("independent_successes")), (row, a_))
+        else:
+            print("  info  no teaching method was used, so no strategy counts changed")
+        _, learner = run.call("GET", f"/api/learner/{student}")
+        states = [c["state"] for c in learner["concepts"]]
+        run.check("Understanding Map shows verified after a VERIFIED answer", not verified or "verified" in states, states)
+        status, after_turn = run.call("POST", f"/api/session/{sid}/attempt", {"text": "one more"})
+        if over:
+            run.check("a finished session refuses more turns", status == 409 and after_turn.get("error", {}).get("code") == "session_over", (status, after_turn))
+        else:
+            run.check("after a first NOT YET the student goes back to teaching", status in (200, 503) and (status == 503 or after_turn.get("phase") == "teach"), (status, after_turn.get("phase")))
+            run.call("POST", f"/api/session/{sid}/exit")  # leave nothing open
+        return follow_up
+
+    run.check("the concept moves to verified", (changes.get("concept") or {}).get("after") == "verified", changes.get("concept"))
     run.check(
         "strategy counts tick up by one use and one success",
         strategy.get("after") == {"uses": before["uses"] + 1, "independent_successes": before["independent_successes"] + 1},
         (before, strategy.get("after")),
     )
-
     after = strategy_row(run, student, story["gap"], story["method"])
     run.check("How You Learn shows the same new counts", after["uses"] == before["uses"] + 1, after)
     _, learner = run.call("GET", f"/api/learner/{student}")
@@ -219,7 +268,10 @@ def main(argv: list[str] | None = None) -> int:
     if run.failures:
         print("Failed:\n  " + "\n  ".join(run.failures))
         return 1
-    print("The Maria story runs end to end. Restart the backend to reset the seeded demo history.")
+    if run.shape_only:
+        print("Every check agrees with the verdicts above. Restart the backend to reset the seeded demo history.")
+    else:
+        print("The Maria story runs end to end. Restart the backend to reset the seeded demo history.")
     return 0
 
 
