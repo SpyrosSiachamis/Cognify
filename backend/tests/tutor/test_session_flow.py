@@ -15,7 +15,10 @@ from .conftest import PROBLEM
 from .fakes import FakeVerifier, ScriptedModel, diagnosis
 
 STALL = diagnosis(("compute", "correct", "2.04 s"), ("choose_method", "missing", None), gap="recognition")
-FOUND = diagnosis(("compute", "correct", "2.04 s"), ("choose_method", "correct", "v^2 = u^2 - 2gh"))
+# The repair turn also works the problem through to the answer: support is removed only when the problem is resolved.
+FOUND = diagnosis(("compute", "correct", "2.04 s"), ("choose_method", "correct", "v^2 = u^2 - 2gh"),
+                  ("compute", "correct", "h = 20.4 m"))
+REPAIRED = "With 2.04 s known I could use v^2 = u^2 - 2gh instead, so h = 20.4 m."
 CORRECT = diagnosis(("choose_method", "correct", "v^2 = u^2 - 2gh"), ("compute", "correct", "h = 20.4 m"), gap=None)
 NOTHING = diagnosis(("choose_method", "missing", None), gap=None, confidence="low", evidence="insufficient")
 
@@ -68,8 +71,8 @@ def test_repair_is_detected_from_the_previous_turn(store):
     sid = start(svc)
     first = send(svc, sid, "I found the time, about 2.04 s, but not the height.")
     assert first.phase == "teach" and first.method.name == "visual_decomposition"
-    second = send(svc, sid, "With 2.04 s known I could use v^2 = u^2 - 2gh instead.")
-    assert second.phase == "stress_test"  # code saw choose_method go from missing to correct
+    second = send(svc, sid, REPAIRED)
+    assert second.phase == "stress_test"  # code saw choose_method go from missing to correct, and the problem resolved
     assert model.teaching_calls == 1  # no extra teaching after the repair
 
 
@@ -77,7 +80,7 @@ def test_repaired_session_credits_the_method_that_taught_it(store):
     svc, _ = service(store, STALL, FOUND)
     sid = start(svc)
     send(svc, sid, "I found the time, about 2.04 s, but not the height.")
-    send(svc, sid, "With 2.04 s known I could use v^2 = u^2 - 2gh instead.")
+    send(svc, sid, REPAIRED)
     verdict = send(svc, sid, "v^2 = u^2 - 2gh with u = 15, so h = 11.5 m.")
     change = verdict.verdict.changes.strategy
     assert (change.gap, change.method) == ("recognition", "visual_decomposition")

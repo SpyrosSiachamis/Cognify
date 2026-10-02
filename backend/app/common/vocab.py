@@ -124,8 +124,15 @@ TraceEventType = Literal[
     "FOLLOW_UP_RESULT",
     "FRESH_PROBLEM_GENERATED",
     "TRANSFER_RESULT",
+    "JUDGE_CONSISTENCY_CHECK",
     "SESSION_ERROR",
     "SESSION_ENDED",
+]
+
+# Where the student stands on the problem, decided by code from their own demonstrated work each turn. Only
+# PROBLEM_RESOLVED lets support be removed and a fresh problem start ("no error found" never does).
+ResolutionState = Literal[
+    "CURRENT_TARGET_UNRESOLVED", "PREVIOUS_STEPS_CORRECT", "CURRENT_TARGET_RESOLVED", "PROBLEM_RESOLVED"
 ]
 
 # How a model call ended, as the trace tells them apart (a provider outage is not a bad reply).

@@ -33,7 +33,9 @@ function createStore(): Store {
 }
 
 type Actions = { dispatch: (a: Action) => void; chooseTheme: (t: Theme) => void; getState: () => AppState };
-const StoreContext = createContext<{ store: Store; actions: Actions } | null>(null);
+// replay: the label of the recorded session being replayed (lib/tutor/replay.ts), or null for the live tutor.
+// Fixed for the provider's life, so reading it never causes a re-render.
+const StoreContext = createContext<{ store: Store; actions: Actions; replay: string | null } | null>(null);
 
 const THEME_KEY = "cognify-theme";
 
@@ -43,7 +45,7 @@ function paintTheme(theme: Theme) {
   else document.documentElement.removeAttribute("data-theme");
 }
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({ children, replay = null }: { children: ReactNode; replay?: string | null }) {
   const [store] = useState(createStore);
 
   const chooseTheme = useCallback(
@@ -57,7 +59,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [store],
   );
-  const value = useMemo(() => ({ store, actions: { dispatch: store.dispatch, chooseTheme, getState: store.get } }), [store, chooseTheme]);
+  const value = useMemo(
+    () => ({ store, actions: { dispatch: store.dispatch, chooseTheme, getState: store.get }, replay }),
+    [store, chooseTheme, replay],
+  );
 
   // Pick up the saved theme. The inline script in layout.tsx already painted it on <html>,
   // so here we only tell the store which button is pressed.
@@ -107,4 +112,9 @@ export function useActions(): Actions {
 export function useApp(): Actions & { state: AppState } {
   const state = useAppSelector((s) => s);
   return { state, ...useActions() };
+}
+
+/** The replayed session's label, or null when the live tutor is in use. */
+export function useReplay(): string | null {
+  return useStore().replay;
 }

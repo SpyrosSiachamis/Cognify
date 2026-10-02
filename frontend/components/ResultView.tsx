@@ -2,14 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { prefersReducedMotion } from "@/lib/fx";
+import { downloadRecording } from "@/lib/tutor/recorder";
+import type { Recording } from "@/lib/tutor/replay";
 import { gapLabel, strategyLabel } from "@/lib/vocab";
 import { useApp } from "./AppProvider";
 import { Icon } from "./Icons";
 
 /* After the seal: what the backend changed for the learner (concept state) and for the teacher (strategy counts).
    Every number and label comes from the verdict the backend returned. */
-export function ResultView({ onNewProblem }: { onNewProblem: () => void }) {
+type SaveReplay = () => Promise<{ recording: Recording; stored: boolean }>;
+type Saving = { status: "idle" | "saving" } | { status: "saved"; recording: Recording; stored: boolean } | { status: "error"; message: string };
+
+export function ResultView({ onNewProblem, onSaveReplay }: { onNewProblem: () => void; onSaveReplay?: SaveReplay }) {
   const { state, dispatch } = useApp();
+  const [saving, setSaving] = useState<Saving>({ status: "idle" });
+  const save = () => {
+    if (!onSaveReplay || saving.status === "saving") return;
+    setSaving({ status: "saving" });
+    onSaveReplay()
+      .then(({ recording, stored }) => setSaving({ status: "saved", recording, stored }))
+      .catch((e) => setSaving({ status: "error", message: e instanceof Error ? e.message : String(e) }));
+  };
   const verdict = state.session.verdict;
   const [shown, setShown] = useState(false); // the "after" values replace the "before" ones after a beat
 
@@ -94,7 +107,31 @@ export function ResultView({ onNewProblem }: { onNewProblem: () => void }) {
           See all your progress <Icon id="i-chart" className="arr" />
         </button>
         <button className="btn-ghost" type="button" onClick={onNewProblem}>Next problem</button>
+        {onSaveReplay && saving.status !== "saved" && (
+          <button className="btn-ghost" type="button" onClick={save} disabled={saving.status === "saving"}>
+            {saving.status === "saving" ? "Saving…" : "Save as replay"}
+          </button>
+        )}
       </div>
+      {saving.status === "saved" && (
+        <p className="demo-note" role="status">
+          {saving.stored ? "Saved as a replay in this browser. " : "This browser would not store it; download the file instead. "}
+          {saving.stored && (
+            <a className="link" href={`/replay/saved?id=${encodeURIComponent(saving.recording.id)}`}>
+              Open the replay
+            </a>
+          )}
+          {saving.stored && " · "}
+          <button type="button" className="link" onClick={() => downloadRecording(saving.recording)}>
+            Download the file
+          </button>
+        </p>
+      )}
+      {saving.status === "error" && (
+        <p className="demo-note" role="alert">
+          Could not save the replay: {saving.message}
+        </p>
+      )}
     </section>
   );
 }

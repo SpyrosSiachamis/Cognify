@@ -37,12 +37,14 @@ from app.user.ports import (
 from app.verification.agent import check_reply, check_student, demonstrated_answers, leaked_answer
 from app.verification.schema import ReplyCheckInput, ReplyCheckResult, StudentCheckInput, StudentCheckResult
 
-from .evidence import substantive
+from .evidence import arithmetic_holds, numeric_values, substantive
+from .consistency import check_work
 from .follow_up import FollowUpInput, write_follow_up
 from .setup import solve
 
 from .reasoning import diagnose
 from .repair import assess_repair, gap_step
+from .resolution import ESTABLISHED_REASON, RESOLVED_REASON, resolve_challenge, standing
 from .schema import (
     ChooseStrategyResult,
     TutorFollowUpOutput,
@@ -62,6 +64,7 @@ from .teaching import write_reply
 log = logging.getLogger(__name__)
 
 MAX_REGENERATIONS = 2
+TARGET_SHOWN_REASON = "the current target is demonstrated by the student's own correct work; no wrong step"
 
 Mode = Literal["teach", "probe", "acknowledge"]
 
@@ -123,6 +126,24 @@ def draft_outcome(draft: "Draft", strategy: ChooseStrategyResult | None) -> Draf
     return DraftOutcome(outcome=kind, note=failure, method=method)
 
 
+def reached_values(request: TeachRequest) -> set[float]:
+    """Values this problem's working really reaches: its worked solution's values, and results the student already
+    showed correctly in this cycle (from answers with no wrong step). Code's rules only."""
+    texts = [request.solution.result, *request.solution.steps, *(s.quote or "" for s in request.earlier_correct_steps)]
+    return set().union(*(numeric_values(t) for t in texts))
+
+
+def already_shown(steps: list[Step]) -> list[Step]:
+    """This cycle's correct steps with a quote, once each, in the order the student showed them."""
+    seen: set[tuple[str, str]] = set()
+    shown: list[Step] = []
+    for s in steps:
+        if s.status == "correct" and s.quote and (s.role, s.quote) not in seen:
+            seen.add((s.role, s.quote))
+            shown.append(s)
+    return shown
+
+
 def _describe(step: Step | None) -> str | None:
     """The gap step as the verifier reads it: the role, and the student's words if any."""
     if step is None:
@@ -139,17 +160,22 @@ def carry_gap(diagnosis: TutorDiagnosis, gap: str | None) -> TutorDiagnosis:
     return TutorDiagnosis.model_validate(data)
 
 
-def choose_mode(diagnosis: TutorDiagnosis, prior_gap: str | None, is_repaired: bool) -> Mode:
-    """Deterministic: what kind of reply this turn needs."""
-    if is_repaired:
+def choose_mode(
+    diagnosis: TutorDiagnosis, prior_gap: str | None, is_repaired: bool, problem_resolved: bool = False
+) -> Mode:
+    """Deterministic: what kind of reply this turn needs. Only a resolved problem is acknowledged (the fresh problem
+    follows); a repaired step or "no error found" short of that asks about the next step instead."""
+    if problem_resolved:
         return "acknowledge"
+    if is_repaired:
+        return "probe"
     if diagnosis.evidence == "insufficient":
         return "teach" if prior_gap else "probe"
     if diagnosis.response_to != "original_problem" and not any(s.status == "wrong" for s in diagnosis.steps):
         # A right answer to part of the problem is not the whole solution: keep teaching the open gap.
         return "teach" if prior_gap else "probe"
     if diagnosis.main_gap is None:
-        return "acknowledge"
+        return "probe"
     return "teach"
 
 
@@ -220,6 +246,21 @@ class AgentTutor:
         if not checked.ok:
             raise RuntimeError(f"judge failed: {checked.failure}: {checked.detail}") # type: ignore
         result = checked.value
+        if not result.correct:
+            # The rubric is generated and can be wrong. Before an answer is called incorrect, code reads the student's
+            # own work: if every calculation is true and every value follows from the problem and the work before it,
+            # nothing in it is wrong, and the shown work outweighs the rubric (tutor/consistency.py).
+            work = check_work(request.student_text, request.follow_up.problem)
+            session_trace.record(
+                session_trace.JudgeConsistencyCheck, judge_correct=False, judge_note=result.note,
+                consistent=work.consistent, reasons=work.reasons, overridden=work.consistent,
+            )
+            if work.consistent:
+                result = StudentCheckResult.model_validate({
+                    **result.model_dump(), "correct": True,
+                    "note": "Every calculation in the student's work is true and each value follows from the problem "
+                            "and the steps before it, so the answer stands on its own working.",
+                })
         # Deterministic: an answer with no reasoning in it is not evidence of independent work.
         if result.own_work and not substantive(request.student_text):
             result = StudentCheckResult.model_validate(
@@ -241,7 +282,8 @@ class AgentTutor:
         reasoned = await diagnose(
             ReasoningInput(
                 problem=request.problem, attempt=request.student_text, final_answer=request.solution.result,
-                tutor_message=request.tutor_message,
+                tutor_message=request.tutor_message, given_values=sorted(numeric_values(request.problem)),
+                reached_values=sorted(reached_values(request)),
             ),
             self._model,
             self._timeout,
@@ -250,8 +292,29 @@ class AgentTutor:
         prior = request.prior
         prior_gap = prior.main_gap if prior else None
         repair = assess_repair(prior, diagnosis)
-        is_repaired = repair.repaired
-        mode = choose_mode(diagnosis, prior_gap, is_repaired)
+        is_repaired, repair_reason = repair.repaired, repair.reason
+        # A correction resolves the step it was asked about; it never starts a search for a new one. When this answer
+        # proves every value of the challenged step with true calculations on validated values, and nothing in it
+        # contradicts them, the gap is resolved by code (no model call). Anything less leaves the diagnosis as it is.
+        resolution = None if is_repaired else resolve_challenge(
+            prior, diagnosis, request.student_text, numeric_values(request.problem),
+            [request.solution.result, *request.solution.steps, *(s.quote or "" for s in request.validated_steps)],
+            [s.quote or "" for s in request.earlier_correct_steps],
+        )
+        if resolution is not None:
+            diagnosis, is_repaired = resolution.diagnosis, True
+            repair_reason = ESTABLISHED_REASON if resolution.established_equation else RESOLVED_REASON
+        # Where the student stands, from their own demonstrated work this cycle (code; never "no error found").
+        stand = standing(request.solution, request.problem, diagnosis, request.student_text,
+                         [s.quote or "" for s in request.validated_steps],
+                         [s.quote or "" for s in request.earlier_correct_steps])
+        # The evidence decides, not a stale label: when this answer demonstrates the current target, with no wrong step
+        # and every written calculation true, the gap being taught is resolved. It is not carried onto correct work
+        # (the tutor asks about the next step instead), whichever step the gap was first attached to.
+        if (stand.state == "CURRENT_TARGET_RESOLVED" and prior_gap and not is_repaired
+                and not any(s.status == "wrong" for s in diagnosis.steps) and arithmetic_holds(request.student_text)):
+            is_repaired, repair_reason = True, TARGET_SHOWN_REASON
+        mode = choose_mode(diagnosis, prior_gap, is_repaired, stand.state == "PROBLEM_RESOLVED")
 
         # No new evidence, but a gap is still being taught: keep teaching that gap. Built as a
         # new, validated diagnosis (the carried gap cannot also stay an alternative).
@@ -278,7 +341,9 @@ class AgentTutor:
                     confidence=diagnosis.confidence, evidence=diagnosis.evidence, response_to=diagnosis.response_to,
                     diagnosis_failed=None if reasoned.ok else reasoned.failure, prior_gap=prior_gap,
                     gap_carried=carried and diagnosis.main_gap is not None, gap_repaired=is_repaired,
-                    repair_reason=repair.reason, mode=mode, gap_step=step,
+                    repair_reason=repair_reason, resolved_by_correct_work=resolution is not None,
+                validated_values=resolution.validated if resolution else [], resolution_state=stand.state,
+                demonstrated_values=stand.demonstrated, current_target=stand.current_target, mode=mode, gap_step=step,
                     method=strategy.method if strategy else None, decision_mode=strategy.mode if strategy else None,
                     strategy_reason=strategy.reason if strategy else None,
                     strategy_uses=strategy.evidence.uses if strategy else None,
@@ -292,7 +357,7 @@ class AgentTutor:
             gap_step=step,
             strategy=strategy,
             gap_repaired=is_repaired,
-            repair_reason=repair.reason,
+            repair_reason=repair_reason,
         )
         if mode == "acknowledge":
             reply = ACKNOWLEDGE_REPLY[student_language(request.student_text)]
@@ -306,7 +371,8 @@ class AgentTutor:
         for i, d in enumerate(drafts):
             log.info("teaching draft %d: %s%s%s", i + 1, d.outcome, f" ({d.reason})" if d.reason else "",
                      f": {d.note}" if d.note else "")
-        output = TutorTeachingOutput(**diagnosis.model_dump(), gap_repaired=is_repaired, reply=reply)
+        output = TutorTeachingOutput(**diagnosis.model_dump(), gap_repaired=is_repaired, reply=reply,
+                                     resolution=stand.state)
         # A method counts as used only when its reply reached the student: a fallback shows and credits none.
         delivered = strategy if view.outcome == "approved" else None
         return TeachResult(output=output, method=delivered, reply_check=view, drafts=drafts), trace
@@ -323,6 +389,8 @@ class AgentTutor:
         teaching_input = TeachingInput(
             problem=request.problem,
             attempt=request.student_text,
+            tutor_message=request.tutor_message,
+            already_shown=already_shown(request.validated_steps),
             mode=mode, # type: ignore
             diagnosis=diagnosis,
             gap_step=step,

@@ -1,0 +1,164 @@
+{
+ "problem": "A university buys 240 laptops for a new computer lab.\n\n5% of the laptops are defective and removed.\nThe remaining laptops are divided between Lab A and Lab B in a ratio of 3:5.\nLab A then receives 20% more laptops from a later shipment.\nLab B has 15% of its laptops replaced, meaning those laptops are removed and replaced one-for-one.\nFinally, 10% of the total laptops originally purchased are transferred from Lab B to Lab A.\n\nHow many laptops does each lab have at the end?",
+ "solution_result": "Lab A: 127 laptops, Lab B: 118 laptops",
+ "turns": [
+  "5% of 240 is 12, so 240 − 12 = 228 laptops remain.\nThe ratio is 3:5, so there are 8 total parts. 228 ÷ 8 = 28.5, so Lab A gets 85.5 laptops and Lab B gets 142.5 laptops.\nLab A receives 20% more, so 20% of 85.5 is 17.1. Therefore, Lab A has 102.6 laptops.\nThe 15% replacement in Lab B does not change its total because every removed laptop is replaced, so Lab B still has 142.5 laptops.\n10% of the original 240 laptops is 24. I transfer 24 laptops from Lab B to Lab A, giving Lab A 126.6 and Lab B 118.5.\nTherefore, Lab A has 126.6 laptops and Lab B has 118.5 laptops.",
+  "The transfer is 24 laptops because 10% of the original 240 is 24. Lab A had 102.6 laptops before the transfer, so 102.6 + 24 = 126.6. Lab B had 142.5 laptops, so 142.5 − 24 = 118.5. Therefore, Lab A has 126.6 laptops and Lab B has 118.5 laptops."
+ ],
+ "proposals": [
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "5% of 240 is 12, so 240 − 12 = 228 laptops remain."
+    },
+    {
+     "role": "choose_method",
+     "status": "correct",
+     "quote": "The ratio is 3:5, so there are 8 total parts."
+    },
+    {
+     "role": "set_up",
+     "status": "correct",
+     "quote": "228 ÷ 8 = 28.5, so Lab A gets 85.5 laptops and Lab B gets 142.5 laptops."
+    },
+    {
+     "role": "compute",
+     "status": "correct",
+     "quote": "Lab A receives 20% more, so 20% of 85.5 is 17.1. Therefore, Lab A has 102.6 laptops."
+    },
+    {
+     "role": "interpret",
+     "status": "correct",
+     "quote": "The 15% replacement in Lab B does not change its total because every removed laptop is replaced, so Lab B still has 142.5 laptops."
+    },
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "10% of the original 240 laptops is 24."
+    },
+    {
+     "role": "set_up",
+     "status": "wrong",
+     "quote": "I transfer 24 laptops from Lab B to Lab A, giving Lab A 126.6 and Lab B 118.5."
+    },
+    {
+     "role": "interpret",
+     "status": "missing",
+     "quote": null
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "correctness",
+     "state": "fragile",
+     "evidence": "The student correctly identifies quantities, chooses methods, and performs computations for most steps, but the final transfer step results in fractional laptops, which are not valid."
+    },
+    {
+     "name": "representation",
+     "state": "weak",
+     "evidence": "The student treats the number of laptops as a continuous quantity, allowing fractional values, which is inconsistent with the problem's implicit requirement for whole laptops."
+    },
+    {
+     "name": "procedure",
+     "state": "strong",
+     "evidence": "The student correctly performs arithmetic operations, percentage calculations, and ratio divisions, demonstrating procedural fluency."
+    },
+    {
+     "name": "concept",
+     "state": "fragile",
+     "evidence": "The student does not recognize that the problem assumes whole laptops, leading to an impractical result (fractional laptops)."
+    },
+    {
+     "name": "self_correction",
+     "state": "untested",
+     "evidence": "There is no evidence the student checked or questioned the reasonableness of fractional laptops."
+    }
+   ],
+   "main_gap": "representation",
+   "alternatives": [
+    {
+     "gap": "concept",
+     "confidence": "medium"
+    }
+   ],
+   "confidence": "high",
+   "evidence": "sufficient",
+   "error": {
+    "student_did": "Transferred 24 laptops from Lab B to Lab A by subtracting 24 from Lab B's total (142.5) and adding 24 to Lab A's total (102.6), resulting in fractional laptops (126.6 and 118.5).",
+    "actually_gives": "Fractional laptops, which are not practically possible, and the transfer operation does not account for the fact that Lab B's total must be an integer before and after the transfer.",
+    "asked_for": "A whole-number transfer of 24 laptops from Lab B to Lab A, ensuring both labs end with integer totals.",
+    "mismatch": "The student's operation produces fractional laptops, which are not valid in this context, and the problem assumes whole laptops throughout."
+   },
+   "response_to": "original_problem"
+  },
+  {
+   "steps": [
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "10% of the original 240 is 24"
+    },
+    {
+     "role": "compute",
+     "status": "correct",
+     "quote": "10% of the original 240 is 24"
+    },
+    {
+     "role": "identify_quantities",
+     "status": "correct",
+     "quote": "Lab A had 102.6 laptops before the transfer, so 102.6 + 24 = 126.6. Lab B had 142.5 laptops, so 142.5 − 24 = 118.5"
+    },
+    {
+     "role": "compute",
+     "status": "wrong",
+     "quote": "Lab A had 102.6 laptops before the transfer, so 102.6 + 24 = 126.6. Lab B had 142.5 laptops, so 142.5 − 24 = 118.5"
+    },
+    {
+     "role": "interpret",
+     "status": "wrong",
+     "quote": "Therefore, Lab A has 126.6 laptops and Lab B has 118.5 laptops."
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "correctness",
+     "state": "fragile",
+     "evidence": "The student correctly identifies the quantity to transfer (24 laptops) but incorrectly computes and interprets the final number of laptops as fractional values."
+    },
+    {
+     "name": "representation",
+     "state": "weak",
+     "evidence": "The student treats the number of laptops as a continuous quantity, leading to fractional results, which is inappropriate for discrete items."
+    },
+    {
+     "name": "procedure",
+     "state": "fragile",
+     "evidence": "The student performs arithmetic operations correctly but fails to recognize the need for integer results in this context."
+    },
+    {
+     "name": "concept",
+     "state": "weak",
+     "evidence": "The student does not demonstrate an understanding that laptops are discrete items and must be counted in whole numbers."
+    }
+   ],
+   "main_gap": "representation",
+   "alternatives": [
+    {
+     "gap": "concept",
+     "confidence": "medium"
+    }
+   ],
+   "confidence": "high",
+   "evidence": "sufficient",
+   "error": {
+    "student_did": "Added 24 laptops to 102.6 and subtracted 24 laptops from 142.5, resulting in non-integer values for the number of laptops in each lab.",
+    "actually_gives": "Non-integer quantities of laptops (126.6 and 118.5), which are not practical for counting discrete items like laptops.",
+    "asked_for": "The final integer number of laptops in each lab after all operations, including the transfer of 24 laptops from Lab B to Lab A.",
+    "mismatch": "The problem involves discrete items (laptops), so the result must be whole numbers, but the student's computation produces fractional laptops."
+   },
+   "response_to": "tutor_question"
+  }
+ ]
+}

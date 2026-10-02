@@ -1,0 +1,624 @@
+{
+  "id": "saved-2ac7b045",
+  "title": "A taxi charges a fixed starting fee of €4 plus €2 per kilometer. A …",
+  "problem": "A taxi charges a fixed starting fee of €4 plus €2 per kilometer. A passenger pays €22 in total. How many kilometers did the passenger travel?",
+  "label": "Replay of recorded session 2ac7b045 (2 Oct 2026). Every reply is what Cognify sent live; no backend or model is called.",
+  "setUpMs": 1365,
+  "setUp": [
+    {
+      "log": {
+        "b": "Trace · hidden solution written",
+        "s": "The set-up model solved the problem first. Kept on the backend, never shown.",
+        "k": "ai"
+      }
+    },
+    {
+      "log": {
+        "b": "Trace · concept",
+        "s": "Linear equations · untested for this learner",
+        "k": "ai"
+      }
+    },
+    {
+      "log": {
+        "b": "Trace · timing",
+        "s": "tutor setup 1.3 s",
+        "k": "ai"
+      }
+    }
+  ],
+  "start": {
+    "session_id": "2ac7b045-334e-407f-8efe-e356fbe8295d",
+    "phase": "ask_first_thought",
+    "message": "Before I help, what would you try first? Even an incomplete idea is useful.",
+    "hints_used": 0
+  },
+  "steps": [
+    {
+      "student": "I know there is a €4 starting fee, and then the rest of the €22 depends on how many kilometers were traveled.",
+      "response": {
+        "session_id": "2ac7b045-334e-407f-8efe-e356fbe8295d",
+        "phase": "teach",
+        "message": "You’ve spotted the two parts of the cost: the €4 starting fee and the €2 per kilometer. Let’s lay them out clearly:\n- Starting fee: €4 (already known)\n- Cost per kilometer: €2 (for an unknown number of kilometers, say x)\n- Total paid: €22\n\nHow could you arrange these three pieces so the relation between them becomes visible?",
+        "diagnosis": {
+          "steps": [
+            {
+              "role": "identify_quantities",
+              "status": "correct",
+              "quote": "I know there is a €4 starting fee, and then the rest of the €22 depends on how many kilometers were traveled."
+            },
+            {
+              "role": "choose_method",
+              "status": "missing",
+              "quote": null
+            },
+            {
+              "role": "set_up",
+              "status": "missing",
+              "quote": null
+            },
+            {
+              "role": "substitute",
+              "status": "missing",
+              "quote": null
+            },
+            {
+              "role": "compute",
+              "status": "missing",
+              "quote": null
+            },
+            {
+              "role": "interpret",
+              "status": "missing",
+              "quote": null
+            }
+          ],
+          "main_gap": "recognition",
+          "alternatives": [
+            {
+              "gap": "representation",
+              "confidence": "medium"
+            }
+          ],
+          "confidence": "medium"
+        },
+        "method": {
+          "name": "visual_decomposition",
+          "mode": "best_known",
+          "experiment": false,
+          "reason": "Worked 8 of 10 times for you on recognition gaps."
+        },
+        "follow_up": null,
+        "hints_used": 0,
+        "reply_check": {
+          "approved": true,
+          "summary": "The reply sets out a clear structure (starting fee, cost per kilometer, total paid) and asks the student to relate them, fulfilling the visual_decomposition method.",
+          "outcome": "approved"
+        }
+      },
+      "ms": 18518,
+      "backstage": [
+        {
+          "log": {
+            "b": "Trace · gap located",
+            "s": "Recognising the method at Choose a method (confidence medium).",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · method chosen by code",
+            "s": "choose_strategy · best_known: Worked 8 of 10 times for you on recognition gaps. Recorded.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · reply checked",
+            "s": "Approved: The reply sets out a clear structure (starting fee, cost per kilometer, total paid) and asks the student to relate them, fulfilling the visual_decomposition method.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · hint counted",
+            "s": "A teaching move counts as one hint: it decides later whether a correct answer is independent.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · timing",
+            "s": "tutor reasoning 17.1 s · tutor teaching 0.8 s · reply checker 0.7 s",
+            "k": "ai"
+          }
+        }
+      ]
+    },
+    {
+      "student": "I’d represent the unknown kilometers as `x`, so the distance cost is `2x`. Then the starting fee plus the distance cost equals the total: `4 + 2x = 22`.",
+      "response": {
+        "session_id": "2ac7b045-334e-407f-8efe-e356fbe8295d",
+        "phase": "teach",
+        "message": "You’ve set up the equation perfectly: **4 + 2x = 22**. What’s the very next step you’d take to solve for **x**?",
+        "diagnosis": {
+          "steps": [
+            {
+              "role": "identify_quantities",
+              "status": "correct",
+              "quote": "I’d represent the unknown kilometers as `x`, so the distance cost is `2x`."
+            },
+            {
+              "role": "choose_method",
+              "status": "correct",
+              "quote": "Then the starting fee plus the distance cost equals the total"
+            },
+            {
+              "role": "set_up",
+              "status": "correct",
+              "quote": "4 + 2x = 22"
+            }
+          ],
+          "main_gap": null,
+          "alternatives": [],
+          "confidence": "high"
+        },
+        "method": null,
+        "follow_up": null,
+        "hints_used": 1,
+        "reply_check": {
+          "approved": true,
+          "summary": "The reply is a probe question focused on the student's next thinking step, with no hints or leaks about the problem.",
+          "outcome": "approved"
+        }
+      },
+      "ms": 4137,
+      "backstage": [
+        {
+          "log": {
+            "b": "Trace · gap repaired",
+            "s": "recognition gap repaired at choose_method: \"Then the starting fee plus the distance cost equals the total\"",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · reply checked",
+            "s": "Approved: The reply is a probe question focused on the student's next thinking step, with no hints or leaks about the problem.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · timing",
+            "s": "tutor reasoning 2.6 s · tutor teaching 0.5 s · reply checker 0.9 s",
+            "k": "ai"
+          }
+        },
+        {
+          "toast": {
+            "msg": "Cognify read your reasoning",
+            "label": "See it",
+            "tab": "reasoning"
+          }
+        }
+      ]
+    },
+    {
+      "student": "I understand the setup now. The €4 is fixed, and `2x` represents the cost of however many kilometers I travel. So `4 + 2x = 22`.\n\nI’m confident about setting up the equation, but I’m not sure how to solve it from here. Could you give me just the next step rather than explaining the whole method again?",
+      "response": {
+        "session_id": "2ac7b045-334e-407f-8efe-e356fbe8295d",
+        "phase": "teach",
+        "message": "You’ve got the equation **4 + 2x = 22** exactly right! Now, what do you think you could do to **isolate the term with x** (the 2x) on one side?",
+        "diagnosis": {
+          "steps": [
+            {
+              "role": "identify_quantities",
+              "status": "correct",
+              "quote": "The €4 is fixed, and `2x` represents the cost of however many kilometers I travel."
+            },
+            {
+              "role": "choose_method",
+              "status": "correct",
+              "quote": "So `4 + 2x = 22`."
+            },
+            {
+              "role": "set_up",
+              "status": "correct",
+              "quote": "`4 + 2x = 22`."
+            }
+          ],
+          "main_gap": null,
+          "alternatives": [],
+          "confidence": "high"
+        },
+        "method": null,
+        "follow_up": null,
+        "hints_used": 1,
+        "reply_check": {
+          "approved": true,
+          "summary": "The reply is a probe question focused on the student's next thinking step without providing any hints, facts, or solutions about the problem.",
+          "outcome": "approved"
+        }
+      },
+      "ms": 4020,
+      "backstage": [
+        {
+          "log": {
+            "b": "Trace · reply checked",
+            "s": "Approved: The reply is a probe question focused on the student's next thinking step without providing any hints, facts, or solutions about the problem.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · timing",
+            "s": "tutor reasoning 2.3 s · tutor teaching 0.9 s · reply checker 0.7 s",
+            "k": "ai"
+          }
+        },
+        {
+          "toast": {
+            "msg": "Cognify read your reasoning",
+            "label": "See it",
+            "tab": "reasoning"
+          }
+        }
+      ]
+    },
+    {
+      "student": "I’m confident that subtracting 4 gives me 2x = 18. I also already understand that the next step is dividing by 2 to get x = 9.",
+      "response": {
+        "session_id": "2ac7b045-334e-407f-8efe-e356fbe8295d",
+        "phase": "stress_test",
+        "message": "Now I am removing the support. New problem, same underlying idea, different surface.",
+        "diagnosis": null,
+        "method": null,
+        "follow_up": {
+          "problem": "A mobile phone company charges a monthly base fee of $15 for 2 GB of data. Each additional gigabyte (GB) used costs $3. Last month, a customer’s total bill was $36. How many **additional** GB of data did the customer use?"
+        },
+        "hints_used": 1,
+        "reply_check": {
+          "approved": true,
+          "summary": "The follow-up effectively tests the same principle in a new context without leaking answers or hints.",
+          "outcome": "approved"
+        }
+      },
+      "ms": 17181,
+      "backstage": [
+        {
+          "diagnosis": {
+            "steps": [
+              {
+                "role": "compute",
+                "status": "correct",
+                "quote": "subtracting 4 gives me 2x = 18"
+              },
+              {
+                "role": "compute",
+                "status": "correct",
+                "quote": "the next step is dividing by 2 to get x = 9"
+              }
+            ],
+            "main_gap": null,
+            "alternatives": [],
+            "confidence": "high"
+          }
+        },
+        {
+          "fresh": true
+        },
+        {
+          "log": {
+            "b": "Read your reasoning",
+            "s": "No gap shown in this answer (confidence high)",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · claim dropped",
+            "s": "Set up (“the equation **4 + 2x = 22** exactly right!”): not accepted as the student's own evidence. No quote, no claim.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · problem resolved",
+            "s": "Every step holds (demonstrated: 9, 18). Solved with help is not verified yet.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · fresh problem approved",
+            "s": "The follow-up effectively tests the same principle in a new context without leaking answers or hints.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · timing",
+            "s": "tutor reasoning 1.9 s · tutor follow up 14.5 s · follow up checker 0.7 s",
+            "k": "ai"
+          }
+        },
+        {
+          "toast": {
+            "msg": "Cognify read your reasoning",
+            "label": "See it",
+            "tab": "reasoning"
+          }
+        }
+      ]
+    },
+    {
+      "student": "I’d represent the additional GB as `x`. The base fee is $15, and each additional GB costs $3, so the total bill is `15 + 3x = 36`.\n\nThen I’d subtract 15 from both sides: `3x = 21`. Dividing both sides by 3 gives `x = 7`.\n\nSo the customer used **7 additional GB** of data.",
+      "response": {
+        "session_id": "2ac7b045-334e-407f-8efe-e356fbe8295d",
+        "phase": "verdict",
+        "session_over": true,
+        "message": "You solved it on your own.",
+        "verdict": {
+          "result": "VERIFIED",
+          "evidence": "The student explicitly sets up the linear equation `15 + 3x = 36` and solves for `x` step-by-step.",
+          "independent": true,
+          "remaining_gap": null,
+          "changes": {
+            "concept": {
+              "concept_id": "e543e3d8-6794-480b-a64d-9bc34d75a1e6",
+              "name": "Linear equations",
+              "before": "untested",
+              "after": "verified"
+            },
+            "strategy": {
+              "gap": "recognition",
+              "method": "visual_decomposition",
+              "before": {
+                "uses": 10,
+                "independent_successes": 8
+              },
+              "after": {
+                "uses": 11,
+                "independent_successes": 9
+              }
+            }
+          }
+        }
+      },
+      "ms": 1233,
+      "backstage": [
+        {
+          "log": {
+            "b": "Trace · judge's evidence",
+            "s": "Correct: yes · own work: yes · reasoning: strong. The student explicitly sets up the linear equation `15 + 3x = 36` and solves for `x` step-by-step.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · code decides",
+            "s": "verified = correct AND independent (own work: yes, 1 hint(s), at most 2) → VERIFIED. The model never says VERIFIED.",
+            "k": "ai"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · method credited",
+            "s": "Visual decomposition for Recognising the method gaps: 8 / 10 → 9 / 11 (independent / uses).",
+            "k": "ok"
+          }
+        },
+        {
+          "log": {
+            "b": "Trace · timing",
+            "s": "student checker 1.2 s",
+            "k": "ai"
+          }
+        }
+      ]
+    }
+  ],
+  "solution": {
+    "result": "The solution was not shown in the recorded session.",
+    "steps": []
+  },
+  "views": {
+    "before": {
+      "learner": {
+        "student_id": "16e82ef2-adee-4671-8393-c6b50ac91672",
+        "display_name": "Maria",
+        "is_seeded": true,
+        "concepts": [
+          {
+            "concept_id": "44d54897-9ec4-45b9-8da1-d4ea95697d1d",
+            "name": "Constant-acceleration kinematics",
+            "state": "fragile",
+            "evidence": [
+              "Seeded demo history: recognition gap in 3 earlier sessions."
+            ]
+          },
+          {
+            "concept_id": "634e70e1-a88f-4ec9-a22e-2715b53a6ca6",
+            "name": "Division of whole numbers",
+            "state": "verified",
+            "evidence": [
+              "Student explicitly shows the subtraction (45 - 5 = 40) and the division (40 ÷ 8 = 5), matching the rubric's steps."
+            ]
+          },
+          {
+            "concept_id": "32853770-e986-4c9a-a2f3-5a0dd948b93e",
+            "name": "Quadratic equations",
+            "state": "verified",
+            "evidence": [
+              "The student defines the width as w and expresses the length as 2w - 4, but their final dimensions (10 m × 16 m and later approximations) do not match the rubric's result of 8 m × 12 m.",
+              "The student explicitly defines the height as h, expresses the base as h + 4, and sets up the area equation (1/2)(h + 4)(h) = 30."
+            ]
+          },
+          {
+            "concept_id": "2a19acaa-fddd-4be1-903d-9d6d05e651de",
+            "name": "Percentage calculations",
+            "state": "verified",
+            "evidence": [
+              "The student explicitly carries out each sequential percentage calculation on the updated quantity (e.g., '30% of 720', '20% of 504') and arrives at the final result of 100.8 books for repair."
+            ]
+          }
+        ]
+      },
+      "strategies": {
+        "student_id": "16e82ef2-adee-4671-8393-c6b50ac91672",
+        "display_name": "Maria",
+        "is_seeded": true,
+        "rows": [
+          {
+            "gap": "procedure",
+            "method": "worked_example",
+            "uses": 1,
+            "independent_successes": 1,
+            "experiments": 0
+          },
+          {
+            "gap": "recognition",
+            "method": "socratic",
+            "uses": 5,
+            "independent_successes": 3,
+            "experiments": 0
+          },
+          {
+            "gap": "recognition",
+            "method": "visual_decomposition",
+            "uses": 10,
+            "independent_successes": 8,
+            "experiments": 0
+          },
+          {
+            "gap": "recognition",
+            "method": "worked_example",
+            "uses": 7,
+            "independent_successes": 4,
+            "experiments": 0
+          }
+        ],
+        "methods": [
+          {
+            "method": "worked_example",
+            "uses": 8,
+            "independent_successes": 5
+          },
+          {
+            "method": "socratic",
+            "uses": 5,
+            "independent_successes": 3
+          },
+          {
+            "method": "visual_decomposition",
+            "uses": 10,
+            "independent_successes": 8
+          }
+        ]
+      }
+    },
+    "after": {
+      "learner": {
+        "student_id": "16e82ef2-adee-4671-8393-c6b50ac91672",
+        "display_name": "Maria",
+        "is_seeded": true,
+        "concepts": [
+          {
+            "concept_id": "44d54897-9ec4-45b9-8da1-d4ea95697d1d",
+            "name": "Constant-acceleration kinematics",
+            "state": "fragile",
+            "evidence": [
+              "Seeded demo history: recognition gap in 3 earlier sessions."
+            ]
+          },
+          {
+            "concept_id": "634e70e1-a88f-4ec9-a22e-2715b53a6ca6",
+            "name": "Division of whole numbers",
+            "state": "verified",
+            "evidence": [
+              "Student explicitly shows the subtraction (45 - 5 = 40) and the division (40 ÷ 8 = 5), matching the rubric's steps."
+            ]
+          },
+          {
+            "concept_id": "32853770-e986-4c9a-a2f3-5a0dd948b93e",
+            "name": "Quadratic equations",
+            "state": "verified",
+            "evidence": [
+              "The student defines the width as w and expresses the length as 2w - 4, but their final dimensions (10 m × 16 m and later approximations) do not match the rubric's result of 8 m × 12 m.",
+              "The student explicitly defines the height as h, expresses the base as h + 4, and sets up the area equation (1/2)(h + 4)(h) = 30."
+            ]
+          },
+          {
+            "concept_id": "2a19acaa-fddd-4be1-903d-9d6d05e651de",
+            "name": "Percentage calculations",
+            "state": "verified",
+            "evidence": [
+              "The student explicitly carries out each sequential percentage calculation on the updated quantity (e.g., '30% of 720', '20% of 504') and arrives at the final result of 100.8 books for repair."
+            ]
+          },
+          {
+            "concept_id": "e543e3d8-6794-480b-a64d-9bc34d75a1e6",
+            "name": "Linear equations",
+            "state": "verified",
+            "evidence": [
+              "The student explicitly sets up the linear equation `15 + 3x = 36` and solves for `x` step-by-step."
+            ]
+          }
+        ]
+      },
+      "strategies": {
+        "student_id": "16e82ef2-adee-4671-8393-c6b50ac91672",
+        "display_name": "Maria",
+        "is_seeded": true,
+        "rows": [
+          {
+            "gap": "procedure",
+            "method": "worked_example",
+            "uses": 1,
+            "independent_successes": 1,
+            "experiments": 0
+          },
+          {
+            "gap": "recognition",
+            "method": "socratic",
+            "uses": 5,
+            "independent_successes": 3,
+            "experiments": 0
+          },
+          {
+            "gap": "recognition",
+            "method": "visual_decomposition",
+            "uses": 11,
+            "independent_successes": 9,
+            "experiments": 0
+          },
+          {
+            "gap": "recognition",
+            "method": "worked_example",
+            "uses": 7,
+            "independent_successes": 4,
+            "experiments": 0
+          }
+        ],
+        "methods": [
+          {
+            "method": "worked_example",
+            "uses": 8,
+            "independent_successes": 5
+          },
+          {
+            "method": "socratic",
+            "uses": 5,
+            "independent_successes": 3
+          },
+          {
+            "method": "visual_decomposition",
+            "uses": 11,
+            "independent_successes": 9
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+ "problem": "A farmer harvests 300 kg of apples. 8% of the apples are spoiled and discarded. The remaining apples are divided between two storages, X and Y, in the ratio 4:7. Storage X receives an additional 25% of its initial share from a later harvest. Meanwhile, 12% of the apples in Storage Y are repackaged, meaning they are removed and replaced one-for-one. Finally, 5% of the total original harvest is moved from Storage Y to Storage X. How many kilograms of apples are in each storage at the end?",
+ "concept_invariant": "Solving multi-step problems involving percentages, ratios, and transfers requires tracking quantities through sequential changes without losing precision.",
+ "target_gap": "transfer",
+ "target_step": "interpret",
+ "perturbation": "context",
+ "difficulty": "medium",
+ "hidden_rubric": [
+  "Correctly calculates the spoiled apples and the remaining quantity: 300 kg - 8% = 276 kg.",
+  "Accurately divides the remaining apples between Storage X and Y using the ratio 4:7, resulting in X = 100.8 kg and Y = 175.2 kg.",
+  "Applies the 25% increase to Storage X's initial share and updates its quantity: 100.8 kg + 25% = 126 kg.",
+  "Interprets the repackaging step correctly, recognizing that Storage Y's quantity remains unchanged at 175.2 kg.",
+  "Calculates 5% of the original harvest (15 kg) and transfers it from Storage Y to X, updating both quantities: X = 126 + 15 = 141 kg, Y = 175.2 - 15 = 160.2 kg."
+ ],
+ "answer": "8% of 300 = 24 kg spoiled, so 276 kg remain.\n\nSplit 276 kg in a 4:7 ratio:\n\nStorage X = 276 × 4/11 = 100.3636 kg\nStorage Y = 276 × 7/11 = 175.6364 kg\n\nStorage X receives 25% more:\n\n100.3636 × 1.25 = 125.4545 kg\n\nStorage Y has 12% repackaged, but the apples are replaced one-for-one, so its amount remains 175.6364 kg.\n\n5% of the original 300 kg = 15 kg transferred from Y to X.\n\nFinal amounts:\n\nStorage X = 125.4545 + 15 = 140.4545 kg\nStorage Y = 175.6364 − 15 = 160.6364 kg\n\nAnswer: Storage X has approximately 140.45 kg, and Storage Y has approximately 160.64 kg."
+}

@@ -2,12 +2,13 @@
 
 import { useRef } from "react";
 import { EXAMPLE_PROBLEM } from "@/lib/state";
-import { useApp } from "./AppProvider";
+import { useApp, useReplay } from "./AppProvider";
 import { Icon } from "./Icons";
 import { Shelf } from "./Shelf";
 
 export function Home({ onStart, onRetryViews }: { onStart: () => void; onRetryViews: () => void }) {
   const { state, dispatch } = useApp();
+  const replay = useReplay();
   const field = useRef<HTMLTextAreaElement>(null);
   const views = state.views;
   const name = views.status === "ok" ? views.data.learner.display_name : null;
@@ -78,8 +79,9 @@ export function Home({ onStart, onRetryViews }: { onStart: () => void; onRetryVi
           Start Master session <Icon id="i-arrow" className="arr" />
         </button>
         <p className="demo-note">
-          {views.status === "ok" && "Connected to Cognify. Every reply comes from the live tutor."}
-          {views.status === "loading" && "Connecting to Cognify…"}
+          {replay}
+          {!replay && views.status === "ok" && "Connected to Cognify. Every reply comes from the live tutor."}
+          {!replay && views.status === "loading" && "Connecting to Cognify…"}
           {views.status === "error" && (
             <>
               Cannot reach Cognify: {views.message}{" "}

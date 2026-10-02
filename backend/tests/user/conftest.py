@@ -52,6 +52,8 @@ class ScriptedTutor(StubTutor):
         self.teach_requests.append(request)
         result = await super().teach(request)
         result.output.gap_repaired = request.teach_turns >= self.repair_after
+        # The stub's whole problem is done when its gap is repaired, so that is when support may go.
+        result.output.resolution = "PROBLEM_RESOLVED" if result.output.gap_repaired else "CURRENT_TARGET_UNRESOLVED"
         return result
 
     async def follow_up(self, request):

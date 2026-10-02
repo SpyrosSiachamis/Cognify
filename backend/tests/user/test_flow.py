@@ -136,7 +136,8 @@ def test_two_not_yet_verdicts_end_the_session_without_credit(make_rig):
 
 
 def test_lucky_correct_answer_after_many_hints_is_not_verified(make_rig):
-    rig = make_rig(ScriptedTutor(repair_after=99))  # only the teaching cap ends teaching
+    # Three teaching moves, then the problem is resolved on the 4th answer (a turn count alone never ends teaching).
+    rig = make_rig(ScriptedTutor(repair_after=4))
     sid = rig.start(MARIA_ID)
     for _ in range(3):
         assert rig.attempt(sid)["phase"] == "teach"

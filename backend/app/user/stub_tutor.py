@@ -49,6 +49,7 @@ class StubTutor:
                 alternatives=[Alternative(gap="concept", confidence="low")],
                 confidence="medium",
                 gap_repaired=request.teach_turns >= 2,
+                resolution="PROBLEM_RESOLVED" if request.teach_turns >= 2 else "CURRENT_TARGET_UNRESOLVED",
                 reply=(
                     "Here is a similar problem solved step by step, with one sign left blank. "
                     "Which sign should go there, and why?"
@@ -73,6 +74,7 @@ class StubTutor:
                 alternatives=[Alternative(gap="representation", confidence="low")],
                 confidence="medium",
                 gap_repaired=request.teach_turns >= 2,
+                resolution="PROBLEM_RESOLVED" if request.teach_turns >= 2 else "CURRENT_TARGET_UNRESOLVED",
                 reply=(
                     "Let's draw it. Sketch the ball going up and mark the point where its speed becomes 0. "
                     "What do you know at that point, and what do you want to find?"

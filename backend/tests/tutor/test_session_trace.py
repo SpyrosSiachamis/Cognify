@@ -73,7 +73,8 @@ def of_type(store, sid, event_type):
 
 
 def taught_then_verified(store, tracing=True):
-    """First thought with a wrong division -> an approved teaching move -> repaired -> fresh problem -> VERIFIED."""
+    """First thought with a wrong division -> an approved teaching move -> repaired and resolved (24 and 4 shown)
+    -> fresh problem -> VERIFIED."""
     svc, sid, model = rig(store, [WRONG_DIVISION, REPAIRED], replies=[TAUGHT], verifier_results=[APPROVE],
                           tracing=tracing)
     turns = [send(svc, sid, FIRST), send(svc, sid, "24 ÷ 6 = 4"), send(svc, sid, FRESH_ANSWER)]
@@ -210,7 +211,7 @@ def test_the_successful_transfer_path_is_reconstructable(store):
                      "REPLY_SENT", "TRANSFER_RESULT", "REPLY_SENT", "SESSION_ENDED"]
     removed, = of_type(store, sid, "SUPPORT_REMOVED")
     method = of_type(store, sid, "DIAGNOSIS_RESULT")[0].method
-    assert (removed.reason, removed.method, removed.counters.hints_used) == ("gap_repaired", method, 1)
+    assert (removed.reason, removed.method, removed.counters.hints_used) == ("problem_resolved", method, 1)
     fresh, = of_type(store, sid, "FRESH_PROBLEM_GENERATED")
     assert (fresh.problem, fresh.support_removed, fresh.hints_available) == (COOKIES["problem"], True, False)
     transfer, = of_type(store, sid, "TRANSFER_RESULT")
@@ -226,7 +227,7 @@ def test_the_successful_transfer_path_is_reconstructable(store):
 def test_state_transitions_are_recorded_with_their_trigger_and_counters(store):
     _, sid, _ = taught_then_verified(store)
     moves = [(t.previous_phase, t.trigger, t.new_phase) for t in of_type(store, sid, "STATE_TRANSITION")]
-    assert moves == [("ask_first_thought", "first_answer", "teach"), ("teach", "gap_repaired", "stress_test"),
+    assert moves == [("ask_first_thought", "first_answer", "teach"), ("teach", "problem_resolved", "stress_test"),
                      ("stress_test", "verified", "verdict")]
     last = of_type(store, sid, "STATE_TRANSITION")[-1]
     assert (last.status, last.counters.transfer_attempts, last.counters.hints_used) == ("verified", 1, 1)

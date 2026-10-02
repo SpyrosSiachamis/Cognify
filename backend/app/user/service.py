@@ -47,7 +47,9 @@ from app.user.schema import (
 
 log = logging.getLogger(__name__)
 
-MAX_TEACH_TURNS = 4  # move to the stress test after this many teaching turns regardless
+# Every this many teaching turns of a cycle with the problem still unresolved, the student is offered the choice to
+# stop. It is never a move to the fresh problem: only a resolved problem removes support.
+MAX_TEACH_TURNS = 4
 MAX_NOT_YET = 2  # the second NOT YET ends the session
 MAX_HINTS_FOR_VERIFIED = 2  # a correct answer after more hints than this is a lucky one (F16)
 MAX_FOLLOW_UP_TRIES = 3  # a repeated follow-up is regenerated this many times, then we give up
@@ -61,6 +63,8 @@ FIRST_THOUGHT_PROMPT = "Before I help, what would you try first? Even an incompl
 EMPTY_PROBE = "What is one thing you notice in the problem?"
 EMPTY_STRESS_TEST = "Take your time. Write what you would try, even if it is not finished."
 SAFE_FALLBACK = "What would you try next?"
+OFFER_EXIT = ("We have been on this for a while. You can keep working on this step with me, or press Exit to see the "
+              "full solution.")
 
 
 def fingerprint(text: str) -> str:
@@ -211,7 +215,8 @@ class SessionService:
                         if session_id in self._follow_up_owed:
                             # The gap was repaired but the follow-up failed last time. Do not teach again (that
                             # would cost another hint for the model's failure): just make the follow-up.
-                            return await self._stress_test(session, self._follow_up_owed[session_id])
+                            # Owed only after a resolved problem (see _teach), so the invariant still holds.
+                            return await self._stress_test(session, self._follow_up_owed[session_id], resolved=True)
                         if not text.strip():
                             # Never explain instead of asking; nothing is saved and the agent is not called
                             return self._blank_turn(session)
@@ -249,6 +254,7 @@ class SessionService:
             prior=self._prior(session),
             tutor_message=session.last_tutor_message,
             earlier_correct_steps=self._earlier_correct_steps(session),
+            validated_steps=self._earlier_correct_steps(session, also_with_wrong=True),
         )
         try:
             result = await self._ask(self._tutor.teach(request))
@@ -288,10 +294,14 @@ class SessionService:
             for i, d in enumerate(result.drafts)
         ])
 
-        # Move on when the gap is repaired, when every step already holds (the skip rule; being right is still
-        # not VERIFIED, and an answer to part of the problem is never the whole of it), or after the turn cap.
-        no_gap = out.main_gap is None and out.evidence == "sufficient" and out.response_to == "original_problem"
-        moving_on = out.gap_repaired or no_gap or turns >= MAX_TEACH_TURNS
+        # The invariant: support is removed (and a fresh problem starts) only when the problem is resolved by the
+        # student's own demonstrated work, as code read it (TutorTeachingOutput.resolution). Never because no error was
+        # found, a taught step alone was fixed, or a number of turns went by.
+        moving_on = out.resolution == "PROBLEM_RESOLVED"
+        # A long unresolved cycle offers the student the choice to stop; tutoring goes on (the reply is code-written
+        # and carries nothing about the problem).
+        offer_exit = not moving_on and turns % MAX_TEACH_TURNS == 0
+        reply = f"{out.reply}\n\n{OFFER_EXIT}" if offer_exit else out.reply
         # A teaching move is delivered only if its approved reply is the one the student sees: not a fallback
         # (the agent then reports no method) and not a reply replaced by the stress test.
         delivered = not moving_on and method is not None and result.reply_check.outcome == "approved"
@@ -318,7 +328,7 @@ class SessionService:
             # is an answer to it. Hint counting is separate (last_reply_taught). On the way to the fresh problem the
             # context is kept until the follow-up is stored (_stress_test), so a retry after a failed follow-up
             # still reads the answer against the question it answered.
-            session.last_tutor_message = out.reply
+            session.last_tutor_message = reply
         self._store.update_session(session)
 
         tracing = session_trace.active()
@@ -326,7 +336,7 @@ class SessionService:
             with session_trace.guard():
                 self._trace_transition(session, "ask_first_thought", "first_answer")
         if moving_on:
-            reason = "gap_repaired" if out.gap_repaired else "no_gap" if no_gap else "turn_cap"
+            reason = "problem_resolved"
             if tracing:
                 with session_trace.guard():
                     decision = self._cycle_decision(session)
@@ -338,7 +348,7 @@ class SessionService:
                         replaced_reply=out.reply, counters=self._counters(session),
                     )
             self._follow_up_owed[session.id] = out.main_gap  # cleared once the follow-up exists
-            turn = await self._stress_test(session, out.main_gap)
+            turn = await self._stress_test(session, out.main_gap, resolved=True)
             if tracing:
                 with session_trace.guard():
                     self._trace_transition(session, "teach", reason)
@@ -349,14 +359,15 @@ class SessionService:
                         else "acknowledgement" if result.reply_check.outcome == "fixed_reply"
                         else "teaching" if method is not None else "probe")
                 session_trace.record(
-                    session_trace.ReplySent, kind=kind, message=out.reply, reply_outcome=result.reply_check.outcome,
+                    session_trace.ReplySent, kind=kind, message=reply, reply_outcome=result.reply_check.outcome,
+                    unresolved_policy="offer_exit" if offer_exit else None,
                     method=method.method if delivered and method else None, shown_to_student=True,
                     counts_as_hint=delivered,
                 )
         return TutorTurn(
             session_id=session.id,
             phase="teach",
-            message=out.reply,
+            message=reply,
             diagnosis=DiagnosisView(
                 steps=out.steps, main_gap=out.main_gap, alternatives=out.alternatives, confidence=out.confidence
             ),
@@ -369,7 +380,10 @@ class SessionService:
             reply_check=result.reply_check,
         )
 
-    async def _stress_test(self, session: rec.Session, main_gap: GapType | None) -> TutorTurn:
+    async def _stress_test(self, session: rec.Session, main_gap: GapType | None, resolved: bool) -> TutorTurn:
+        if not resolved:
+            # The invariant, kept where the transition happens: no fresh problem without a resolved one.
+            raise _internal("Support can only be removed once the problem is resolved by the student's own work.")
         result, new_fingerprint = await self._new_follow_up(session, main_gap)
         draft = result.output.follow_up
         saved = self._store.add_follow_up(
@@ -745,15 +759,16 @@ class SessionService:
         decisions = [d for d in self._store.list_strategy_decisions(session.id) if start is None or d.created_at > start]
         return decisions[-1] if decisions else None
 
-    def _earlier_correct_steps(self, session: rec.Session) -> list[Step]:
-        """Correct steps the student already showed in this cycle, from answers with no wrong step."""
+    def _earlier_correct_steps(self, session: rec.Session, also_with_wrong: bool = False) -> list[Step]:
+        """Correct steps the student already showed in this cycle, from answers with no wrong step (or from every
+        answer: the work a correction may build on)."""
         start = self._cycle_start(session)
         found: list[Step] = []
         for attempt in self._store.list_attempts(session.id):
             if attempt.phase == "stress_test" or (start is not None and attempt.created_at <= start):
                 continue
             steps = self._store.list_steps(attempt.id)
-            if steps and not any(s.status == "wrong" for s in steps):
+            if steps and (also_with_wrong or not any(s.status == "wrong" for s in steps)):
                 found += [Step(role=s.role, status=s.status, quote=s.quote) for s in steps if s.status == "correct"]
         return found
 

@@ -33,9 +33,9 @@ export function ProblemCard({ text }: { text: string }) {
 }
 
 /** A text box for the student's answer. Once sent it stays visible but locked (the request is in flight or done). */
-function AnswerBox({ placeholder, label, done, onSubmit, focusDelay }: { placeholder: string; label: string; done: boolean; onSubmit: (text: string) => void; focusDelay: number }) {
+function AnswerBox({ placeholder, label, done, onSubmit, focusDelay, prefill }: { placeholder: string; label: string; done: boolean; onSubmit: (text: string) => void; focusDelay: number; prefill?: string }) {
   const { field } = useEntry<HTMLTextAreaElement>(focusDelay);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(prefill ?? "");
   const send = () => {
     if (done || !value.trim()) return; // nothing to send; a sent answer cannot be sent twice
     onSubmit(value.trim());
@@ -67,7 +67,7 @@ export function ReplyCard({ widget, done, onSubmit }: { widget: Extract<Widget, 
     <div className="icard" ref={ref}>
       <div className="paper stack">
         <span className="kicker">{widget.kicker}</span>
-        <AnswerBox placeholder={widget.placeholder} label={widget.kicker} done={done} onSubmit={onSubmit} focusDelay={400} />
+        <AnswerBox placeholder={widget.placeholder} label={widget.kicker} done={done} onSubmit={onSubmit} focusDelay={400} prefill={widget.prefill} />
       </div>
     </div>
   );
@@ -81,7 +81,7 @@ export function StressCard({ widget, done, onSubmit }: { widget: Extract<Widget,
       <div className={`paper stark stack${done ? " card-done" : ""}`}>
         <span className="kicker">{widget.kicker}</span>
         <p className="fresh">{widget.problem}</p>
-        {!done && <AnswerBox placeholder={widget.placeholder} label="Your solution" done={done} onSubmit={onSubmit} focusDelay={700} />}
+        {!done && <AnswerBox placeholder={widget.placeholder} label="Your solution" done={done} onSubmit={onSubmit} focusDelay={700} prefill={widget.prefill} />}
         <span className="locked-help">
           <Icon id="i-lock" />
           Hints are off

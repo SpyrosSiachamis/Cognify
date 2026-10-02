@@ -18,6 +18,7 @@ from app.common.vocab import (
     Rating,
     RejectionReason,
     ReplyOutcome,
+    ResolutionState,
     ResponseTo,
     StepRole,
     StepStatus,
@@ -168,6 +169,8 @@ class TutorTeachingOutput(TutorDiagnosis):
 
     gap_repaired: bool
     reply: Text
+    # Code's reading of where the student stands; only PROBLEM_RESOLVED lets the session remove support.
+    resolution: ResolutionState = "CURRENT_TARGET_UNRESOLVED"
 
 
 class PriorDiagnosis(StrictModel):
@@ -192,6 +195,12 @@ class ReasoningInput(StrictModel):
     # The tutor's last delivered teaching move, when the student is answering it (None: the attempt is work
     # on the problem itself). Sent only when set, so a first thought reads exactly as before.
     tutor_message: str | None = None
+    # For code's rules only, never sent to the model (the prompt is unchanged): the problem's own numbers, and the
+    # values its working really reaches (its worked solution's values, results the student already showed correctly
+    # in this cycle). A "wrong" step that states a reached value, uses no other number and has true arithmetic is
+    # checked once more.
+    given_values: list[float] = Field(default=[], exclude=True)
+    reached_values: list[float] = Field(default=[], exclude=True)
 
     def prompt(self) -> str:
         return self.model_dump_json(indent=2, exclude={"tutor_message"} if self.tutor_message is None else None)
@@ -202,6 +211,10 @@ class TeachingInput(StrictModel):
 
     problem: Text
     attempt: Text
+    # The tutor's last delivered move, which the attempt may be answering (so the reply never asks it again).
+    tutor_message: str | None = None
+    # Steps the student already showed correctly earlier in this cycle: never asked for again.
+    already_shown: list[Step] = []
     mode: TeachingMode
     diagnosis: TutorDiagnosis
     gap_step: Step | None = None
