@@ -517,3 +517,14 @@ h1 em,h2 em{animation:none;background-position:0 0;filter:none;text-shadow:0 2px
 .paper::before{--mx:inherit;--my:inherit}
 /* The short line next to the typing dots while a turn takes a while. */
 .waiting-line{margin-left:10px;font-family:var(--f-ui);font-size:13px;color:var(--ink-faint);vertical-align:middle}
+/* Fewer and smaller layers for the compositor (measured: see the performance notes in the PR).
+   - The dust canvas changes every frame: on its own layer, it no longer repaints the page under it.
+   - The dark veil only has to reach the far edge of the screen from the cursor: 200% of the
+     viewport instead of a 300vmax square (16 screens of pixels at 1920x1080, now 4).
+   - Layers that are fully transparent until they are needed are hidden, so they cost nothing. */
+#cvMotes{will-change:transform}
+.veil{width:200vw;height:200vh;margin:-100vh 0 0 -100vw}
+.deep{visibility:hidden;transition:opacity 1.4s ease,visibility 0s 1.4s}
+body.dim .deep{visibility:visible;transition:opacity 1.4s ease,visibility 0s}
+.seal-wrap{visibility:hidden;transition:opacity .6s,visibility 0s .6s}
+.seal-wrap.show{visibility:visible;transition:opacity .6s,visibility 0s}
