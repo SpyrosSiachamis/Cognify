@@ -1,0 +1,20 @@
+# Run the backend for the live demo: docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build backend
+#
+# The normal setup (docker-compose.yml alone) runs the backend with uvicorn --reload and the source bind-mounted,
+# so saving ANY backend file restarts it, and the in-memory history and every open session are lost.
+# This override uses the Dockerfile's prod stage instead: the code is copied into the image, nothing reloads,
+# one worker (the in-memory history store needs exactly one), and the container reports healthy when /api/health answers.
+# Secrets are not in the image: .env is read at start (see .dockerignore).
+#
+# To go back to development: docker compose up -d --build backend   (use the plain file again)
+services:
+  backend:
+    build:
+      target: prod
+    volumes: !reset []
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
