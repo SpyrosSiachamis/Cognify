@@ -151,3 +151,52 @@ def test_the_script_notices_when_a_retry_costs_an_extra_hint(serve_tutor, capsys
     code = load_script().main(["--base-url", url, "--shape-only", "--student", "maria"])
     out = capsys.readouterr().out
     assert code == 1 and "FAIL  a retried request did not cost an extra hint" in out, out
+
+
+# ---- the leak check must tell a tutor repeating the student from a tutor giving the answer away ----
+
+
+def _leak_check(student_wrote: list[str], tutor_message: str, **extra) -> list[str]:
+    run = load_script().Run("http://unused", shape_only=False)
+    run.written = student_wrote
+    run.no_leaks("turn", {"message": tutor_message, **extra})
+    return run.failures
+
+
+def test_a_tutor_quoting_the_students_own_step_is_not_a_leak():
+    # What the real model really did: it quoted Nikos's correct step back to him
+    wrote = ["The acceleration is -9.8, v = 0 at the top, so 0 = 400 - 19.6 h and h = 400 / 19.6."]
+    assert _leak_check(wrote, 'Not yet: one step does not hold up yet: "h = 400 / 19.6". Look at that step again.') == []
+    assert _leak_check(["I got h = -20.4 m"], "You wrote h = -20.4 m. What sign should the height have?") == []
+
+
+def test_stating_the_answer_is_still_a_leak_even_if_the_student_wrote_something_close():
+    # Nikos wrote "-20.4 m" himself; a tutor saying the height IS 20.4 m must still be caught
+    assert _leak_check(["I got h = -20.4 m"], "The height is h = 20.4 m, so your sign was wrong.") == ["turn: nothing hidden or solved is shown"]
+    assert _leak_check([], "The ball rises 20.4 m.") == ["turn: nothing hidden or solved is shown"]
+    assert _leak_check(["I found the time, 2.04 s"], "Next compute h = 400 / 19.6.") == ["turn: nothing hidden or solved is shown"]
+
+
+def test_one_echo_does_not_excuse_a_second_mention():
+    wrote = ["so h = 400 / 19.6"]
+    said = 'You wrote "h = 400 / 19.6". Now finish it: the answer is 20.4 m.'
+    assert _leak_check(wrote, said) == ["turn: nothing hidden or solved is shown"]
+
+
+def test_hidden_fields_are_never_excused_and_the_diagnosis_quotes_are_skipped():
+    assert _leak_check(["hidden"], "hi", hidden_rubric=["x"]) == ["turn: nothing hidden or solved is shown"]
+    run = load_script().Run("http://unused", shape_only=False)
+    run.no_leaks("turn", {"message": "ok", "diagnosis": {"steps": [{"quote": "h = 400 / 19.6 = 20.4 m"}]}})
+    assert run.failures == []
+
+
+def test_quotes_and_accents_in_the_tutor_text_do_not_hide_an_echo():
+    # The reply is compared unescaped: a JSON-escaped quote in front of the marker must not break the match
+    wrote = ["h = 400 / 19.6"]
+    assert _leak_check(wrote, "Look at “h = 400 / 19.6” again, είναι σωστό;") == []
+
+
+def test_the_story_resets_what_the_student_wrote_between_learners(serve_tutor, capsys):
+    # Maria's earlier words must not excuse something said to Nikos: both stories pass and neither leaks
+    url = serve_tutor(ScriptedTutor())
+    assert load_script().main(["--base-url", url]) == 0, capsys.readouterr().out

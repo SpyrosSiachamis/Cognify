@@ -36,6 +36,8 @@ PROBLEM = (
 )
 SOLUTION_MARKERS = ("20.4 m", "400 / 19.6")  # the worked answer: never in a Master reply
 HIDDEN_FIELDS = ("hidden", "rubric")
+ECHO_CONTEXT = 4  # characters before a solution marker that must match what the student wrote ("h = ")
+QUOTES = re.compile(r"[\"'`\u2018\u2019\u201c\u201d]")  # quoting someone does not change what they said
 
 STORIES = {
     "maria": {
@@ -71,6 +73,7 @@ class Run:
         self.shape_only = shape_only
         self.failures: list[str] = []
         self.checks = 0
+        self.written: list[str] = []  # what the student wrote in the story being played
 
     def call(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
         data = None if body is None else json.dumps(body).encode()
@@ -85,6 +88,7 @@ class Run:
 
     def attempt(self, sid: str, text: str, tries: int = 4) -> tuple[int, dict, int]:
         """Send an attempt. A retryable 503 is sent again with the same text. Returns (status, body, retries)."""
+        self.written.append(text)
         for retry in range(tries):
             status, body = self.call("POST", f"/api/session/{sid}/attempt", {"text": text})
             error = body.get("error", {}) if isinstance(body, dict) else {}
@@ -104,11 +108,39 @@ class Run:
         return ok
 
     def no_leaks(self, name: str, payload: dict) -> None:
-        # What the tutor wrote. A quote is the student's own words (Nikos writes -20.4 m himself).
+        """Nothing hidden or solved in what the tutor wrote. The diagnosis is skipped (its quotes are the student's
+        own words), and a marker the tutor only repeats from the student's own message is not a leak: Nikos writes
+        "h = 400 / 19.6" himself, and "Not yet: 'h = 400 / 19.6' does not hold up" quotes him."""
         shown = {k: v for k, v in payload.items() if k != "diagnosis"}
-        text = json.dumps(shown)
-        leaked = [m for m in (*SOLUTION_MARKERS, *HIDDEN_FIELDS) if m in text]
+        plain = QUOTES.sub("", "\n".join(_strings(shown)))
+        written = QUOTES.sub("", "\n".join(self.written))
+        leaked = [m for m in HIDDEN_FIELDS if m in json.dumps(shown)]
+        leaked += [m for m in SOLUTION_MARKERS if m in plain and not _only_echoes(plain, m, written)]
         self.check(f"{name}: nothing hidden or solved is shown", not leaked, leaked)
+
+
+def _strings(value: object) -> list[str]:
+    """Every string inside a JSON value, unescaped (so quotes and accents compare with the student's text)."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [t for v in value.values() for t in _strings(v)]
+    if isinstance(value, list):
+        return [t for v in value for t in _strings(v)]
+    return []
+
+
+def _only_echoes(shown: str, marker: str, written: str) -> bool:
+    """True when every place `marker` appears in `shown` repeats the student's own words: the few characters in
+    front of it, plus the marker, appear together in what the student wrote. "the height is 20.4 m" is not an echo
+    of "I got h = -20.4 m"; "h = -20.4 m" is."""
+    start = 0
+    while (i := shown.find(marker, start)) != -1:
+        before = shown[max(0, i - ECHO_CONTEXT):i]
+        if before + marker not in written:
+            return False
+        start = i + len(marker)
+    return True
 
 
 def strategy_row(run: Run, student: str, gap: str, method: str) -> dict:
@@ -118,6 +150,7 @@ def strategy_row(run: Run, student: str, gap: str, method: str) -> dict:
 
 def play(run: Run, story: dict) -> str | None:
     name, student = story["name"], story["id"]
+    run.written = []
     print(f"\n== {name} ==")
     before = strategy_row(run, student, story["gap"], story["method"])
     _, learner = run.call("GET", f"/api/learner/{student}")
