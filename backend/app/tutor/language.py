@@ -40,9 +40,11 @@ def written_in(text: str, language: Language) -> bool:
     return sum(w in ENGLISH for w in words) >= sum(w in OTHER for w in words)
 
 
+# The last-resort fallback, when the diagnosis gives nothing more specific to say (tutor/fallback.py explains the
+# others). It asks for work and claims nothing about the student (they may well be sure of their answer).
 FALLBACK_REPLY: dict[Language, str] = {
-    "English": "Let's slow down for a moment. Which step of your answer are you least sure about, and why?",
-    "Greek": "Ας το πάρουμε λίγο πιο αργά. Ποιο βήμα της απάντησής σου σου φαίνεται πιο δύσκολο, και γιατί;",
+    "English": "Let's take it one step at a time. Write the first step you would use for this problem.",
+    "Greek": "Ας το πάρουμε ένα βήμα τη φορά. Γράψε το πρώτο βήμα που θα έκανες για αυτό το πρόβλημα.",
 }
 STRESS_TEST_MESSAGE: dict[Language, str] = {
     "English": "Now I am removing the support. New problem, same underlying idea, different surface.",

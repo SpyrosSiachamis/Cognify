@@ -11,7 +11,8 @@ import pytest
 from app.ai_gateway import gateway
 from app.seed.data import MARIA_ID, NIKOS_ID
 from app.tutor.agent import MAX_REGENERATIONS, AgentTutor, final_answers
-from app.tutor.language import ACKNOWLEDGE_REPLY, FALLBACK_REPLY, student_language, written_in
+from app.tutor.fallback import explain_fallback
+from app.tutor.language import ACKNOWLEDGE_REPLY, student_language, written_in
 from app.tutor.repair import assess_repair, gap_step, repaired
 from app.tutor.schema import DimensionRating, PriorDiagnosis, Step, TutorDiagnosis
 from app.tutor.strategy import choose_strategy
@@ -31,6 +32,11 @@ CORRECT = diagnosis(
 )
 NOTHING = diagnosis(("choose_method", "missing", None), gap="concept", confidence="high")
 
+
+
+def fallback_of(trace, text=MARIA_FIRST_THOUGHT):
+    """The safe fallback this turn's diagnosis explains (tutor/fallback.py)."""
+    return explain_fallback(trace.diagnosis, trace.gap_step, text, "English")[0]
 
 def run(store, model, verifier=None, request=None, **kwargs):
     tutor = AgentTutor(store, model.model, (verifier or FakeVerifier()).model, **kwargs)
@@ -232,7 +238,7 @@ def test_only_an_approved_reply_reaches_the_student(store):
     model = ScriptedModel([STALL], replies=["Too much help."])
     trace, result = run(store, model, FakeVerifier(HEAVY))
     assert len(trace.drafts) == 1 + MAX_REGENERATIONS
-    assert result.output.reply == FALLBACK_REPLY["English"] and not result.reply_check.approved
+    assert result.output.reply == fallback_of(trace) and not result.reply_check.approved
 
 
 def test_code_catches_a_leaked_answer_before_the_verifier(store):
@@ -250,8 +256,8 @@ def test_leak_check_covers_the_bare_number():
 
 def test_a_failing_verifier_never_lets_a_reply_through(store):
     model = ScriptedModel([STALL])
-    _, result = run(store, model, FakeVerifier({"mode": "reply_check", "approved": "maybe"}))
-    assert result.output.reply == FALLBACK_REPLY["English"] and not result.reply_check.approved
+    trace, result = run(store, model, FakeVerifier({"mode": "reply_check", "approved": "maybe"}))
+    assert result.output.reply == fallback_of(trace) and not result.reply_check.approved
 
 
 # ---- invalid output, provider errors and timeouts (gateway) ----
@@ -285,7 +291,7 @@ def test_timeout_falls_back(store):
     model = ScriptedModel([STALL], delay=1)
     trace, result = run(store, model, timeout=0.05)
     assert trace.diagnosis_failure.startswith("timeout")
-    assert result.output.reply == FALLBACK_REPLY["English"]
+    assert result.output.reply == fallback_of(trace)
 
 
 def test_gateway_maps_failures_to_typed_fallbacks():
@@ -437,7 +443,7 @@ def test_persistent_drift_ends_in_the_fallback(store):
     model = ScriptedModel([STALL], replies=["What do you think comes next?"])
     trace, result = run(store, model, FakeVerifier(DRIFT))
     assert [d.check.reason for d in trace.drafts] == ["method_drift"] * (1 + MAX_REGENERATIONS)
-    assert result.output.reply == FALLBACK_REPLY["English"] and not result.reply_check.approved
+    assert result.output.reply == fallback_of(trace) and not result.reply_check.approved
 
 
 def test_a_probe_has_no_method_contract(store):

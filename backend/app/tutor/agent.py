@@ -54,7 +54,8 @@ from .schema import (
     TutorTeachingOutput,
 )
 from .strategy import choose_strategy
-from .language import ACKNOWLEDGE_REPLY, FALLBACK_REPLY, STRESS_TEST_MESSAGE, student_language, written_in
+from .fallback import explain_fallback
+from .language import ACKNOWLEDGE_REPLY, STRESS_TEST_MESSAGE, student_language, written_in
 from .methods import GUIDANCE, METHOD_DEFINITIONS
 from .teaching import write_reply
 
@@ -412,7 +413,10 @@ class AgentTutor:
         trace.fallback = True
         last = draft_outcome(trace.drafts[-1], strategy) if trace.drafts else None
         outcome = last.outcome if last else "teaching_failed"
-        fallback = FALLBACK_REPLY[teaching_input.language]
+        # Say why another answer is needed, from this turn's diagnosis (code only; it quotes only the student).
+        fallback, explanation = explain_fallback(
+            diagnosis, step, request.student_text, teaching_input.language, request.tutor_message
+        )
         if session_trace.active():
             with session_trace.guard():
                 outcomes = [draft_outcome(d, strategy) for d in trace.drafts]
@@ -421,7 +425,9 @@ class AgentTutor:
                     last_reason=last.reason if last else None,
                     drafts=[{"attempt": i + 1, "outcome": o.outcome, "reason": o.reason, "note": o.note,
                              "draft": d.reply or None} for i, (d, o) in enumerate(zip(trace.drafts, outcomes))],
-                    fallback_reply=fallback, main_gap=diagnosis.main_gap, method=method, counts_as_hint=False,
+                    fallback_reply=fallback, explanation=explanation,
+                    evidence_unrecognized=explanation == "unrecognized_evidence", main_gap=diagnosis.main_gap,
+                    method=method, counts_as_hint=False,
                 )
         # The summary goes to the browser: the outcome and the verifier's reason only, never raw failure text (that
         # stays in the draft records and the log).

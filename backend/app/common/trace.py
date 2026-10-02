@@ -214,6 +214,10 @@ class TeachingFallback(_Payload):
     last_reason: RejectionReason | None
     drafts: list[FallbackDraft]
     fallback_reply: str
+    explanation: str  # what the reply explains (tutor/fallback.py FallbackKind)
+    # The student sent working the diagnosis could not place on this problem's steps: a matching problem to look at,
+    # not missing evidence.
+    evidence_unrecognized: bool
     main_gap: GapType | None
     method: Strategy | None
     counts_as_hint: bool  # a fallback never does (F16); whether it was shown is in REPLY_SENT
