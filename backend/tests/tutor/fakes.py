@@ -43,10 +43,13 @@ def diagnosis(*steps: tuple[str, str, str | None], gap: str | None = "recognitio
 
 
 class ScriptedModel:
-    """Returns the scripted diagnoses and replies in order (the last one repeats)."""
+    """Returns the scripted diagnoses and replies in order (the last one repeats).
+
+    The set-up output is one dict for every call, or a list with one per call (the last repeats).
+    """
 
     def __init__(self, diagnoses: list[dict], replies: list[str] = ["What do you know at the very top?"],
-                 delay: float = 0, raise_on: str | None = None, setup: dict = SETUP,
+                 delay: float = 0, raise_on: str | None = None, setup: dict | list[dict] = SETUP,
                  follow_ups: list[dict] = [FOLLOW_UP]):
         self.diagnoses, self.replies, self.delay, self.raise_on = diagnoses, replies, delay, raise_on
         self.setup, self.follow_ups = setup, follow_ups
@@ -63,7 +66,9 @@ class ScriptedModel:
         sent = sent_json(messages)
         if "known_concepts" in sent:
             self.setup_inputs.append(sent)
-            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, self.setup)])
+            setups = self.setup if isinstance(self.setup, list) else [self.setup]
+            output = setups[min(len(self.setup_inputs), len(setups)) - 1]
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, output)])
         if "student_answers" in sent:
             self.follow_up_inputs.append(sent)
             output = self.follow_ups[min(len(self.follow_up_inputs), len(self.follow_ups)) - 1]

@@ -36,6 +36,7 @@ def outcome_for(session, result="VERIFIED", before="fragile", after="verified", 
         method="visual_decomposition",
         decision_mode=mode,
         result=result,
+        not_yet_reason=None if verified else "incorrect",  # every NOT YET says why (F16)
         independent=verified,
         hints_used=0 if verified else 3,
         concept_before=before,

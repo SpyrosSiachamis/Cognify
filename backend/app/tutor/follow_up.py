@@ -13,6 +13,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 from app.ai_gateway import gateway
+from app.common import trace
 from app.common.vocab import GapType, RejectionReason, Strategy
 from app.verification.agent import check_follow_up
 from app.verification.schema import FollowUpCheckInput, FollowUpCheckResult
@@ -71,11 +72,13 @@ async def write_follow_up(
 ) -> tuple[FollowUpDraft, FollowUpCheckResult, list[Attempt]]:
     attempts: list[Attempt] = []
     current = follow_up_input
-    for _ in range(1 + MAX_REGENERATIONS):
+    for number in range(1, 2 + MAX_REGENERATIONS):
         written = await gateway.call(follow_up_agent, current.model_dump_json(indent=2), model=model,
                                      fallback=None, timeout=timeout)
         if not written.ok or written.value is None:
             attempts.append(Attempt(failure=f"generation: {written.failure}: {written.detail}"))
+            trace.record(trace.FollowUpResult, attempt=number, outcome="generation_failed",
+                         failure=None if written.ok else written.failure, detail=None if written.ok else written.detail)
             break
         # Deterministic fact: the follow-up tests the gap that was taught (or transfer when none was).
         draft = FollowUpDraft.model_validate(
@@ -89,6 +92,8 @@ async def write_follow_up(
             problem_reason = ("invalid_followup", f"Write the problem in {follow_up_input.language}.")
         if problem_reason:
             attempts.append(Attempt(draft=draft, failure=f"code: {problem_reason[1]}"))
+            trace.record(trace.FollowUpResult, attempt=number, outcome="rejected_by_code", reason=problem_reason[0],
+                         note=problem_reason[1], draft=draft)
             current = current.model_copy(update={"retry_reason": problem_reason[0], "retry_note": problem_reason[1]})
             continue
         checked = await check_follow_up(
@@ -101,8 +106,13 @@ async def write_follow_up(
         )
         if not checked.ok:
             attempts.append(Attempt(draft=draft, failure=f"verifier: {checked.failure}: {checked.detail}"))
+            trace.record(trace.FollowUpResult, attempt=number, outcome="verifier_failed", failure=checked.failure,
+                         detail=checked.detail, draft=draft)
             break
         attempts.append(Attempt(draft=draft, check=checked.value))
+        trace.record(trace.FollowUpResult, attempt=number,
+                     outcome="approved" if checked.value.approved else "rejected_by_verifier",
+                     reason=checked.value.reason, note=checked.value.note, draft=draft)
         if checked.value.approved:
             return draft, checked.value, attempts
         current = current.model_copy(update={"retry_reason": checked.value.reason, "retry_note": checked.value.note})

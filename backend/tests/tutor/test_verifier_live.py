@@ -157,3 +157,24 @@ def test_a_reasoned_solution_shows_the_gap_step():
 def test_a_correct_answer_by_trial_and_error_is_not_own_work():
     result = student_check("I tried some heights: 10 m felt too low and 12 m too high, so I guess about 11.5 m.")
     assert not result.own_work
+
+
+# ---- a probe asks about the student's thinking only (a hint in it would be uncounted help) ----
+
+
+def test_a_probe_that_slips_in_a_hint_is_rejected():
+    checked = asyncio.run(check_reply(ReplyCheckInput(
+        problem=PROBLEM, attempt="I don't know.", reply="The ball slows down by 9.8 m/s every second. What is its speed at the very top?",
+        method=None, hints_used=0, hidden_solution=" ".join(SOLUTION.steps), main_gap=None, language="English",
+    ), gateway.model_for()))
+    print(checked)
+    assert checked.ok and not checked.value.approved and checked.value.reason == "heavy_hint"
+
+
+def test_a_probe_that_only_asks_about_their_thinking_is_approved():
+    checked = asyncio.run(check_reply(ReplyCheckInput(
+        problem=PROBLEM, attempt="I don't know.", reply="What do you notice first when you read the problem?",
+        method=None, hints_used=0, hidden_solution=" ".join(SOLUTION.steps), main_gap=None, language="English",
+    ), gateway.model_for()))
+    print(checked)
+    assert checked.ok and checked.value.approved, checked.value.note

@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.history import get_store
 from app.session.schema import (
@@ -12,7 +12,8 @@ from app.session.schema import (
     SessionStartResponse,
     StudentAttempt,
 )
-from app.user.schema import LearnerView, StrategyView
+from app.user.errors import ApiError
+from app.user.schema import LearnerView, SessionTraceView, StrategyView, TraceExport, TraceIndex
 from app.user.service import SessionService
 from app.user.stub_tutor import StubTutor
 
@@ -56,3 +57,28 @@ def learner(student_id: UUID, service: Service) -> LearnerView:
 @router.get("/strategies/{student_id}")
 def strategies(student_id: UUID, service: Service) -> StrategyView:
     return service.strategy_view(student_id)
+
+
+# ---- development session trace: 404 unless DEBUG_TRACE is on ----
+
+
+def _tracing(service: SessionService) -> SessionService:
+    if not service.tracing:
+        raise ApiError(404, "not_found", "Session tracing is off (set DEBUG_TRACE=true in development).")
+    return service
+
+
+@router.get("/session/{session_id}/debug-trace")
+def session_trace(session_id: UUID, service: Service) -> SessionTraceView:
+    return _tracing(service).trace_view(session_id)
+
+
+@router.get("/debug-trace")
+def trace_index(service: Service) -> TraceIndex:
+    return _tracing(service).trace_index()
+
+
+@router.get("/debug-trace/export")
+def trace_export(service: Service, session_id: Annotated[list[UUID] | None, Query()] = None) -> TraceExport:
+    """Every traced session (or the ones named), oldest first, for analysis across sessions."""
+    return _tracing(service).trace_export(session_id)

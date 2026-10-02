@@ -5,16 +5,22 @@ This is the only module that imports the provider.
 """
 
 import asyncio
+import logging
 import os
+import time
 from functools import lru_cache
 from typing import Any
 
 from botocore.exceptions import BotoCoreError
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import ModelAPIError, UnexpectedModelBehavior
+from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UnexpectedModelBehavior
 from pydantic_ai.models import Model
 
+from app.common import trace
+
 from .schema import GatewayConfig, GatewayFallback, GatewayOk
+
+log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
 
@@ -62,14 +68,63 @@ async def call[T](
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> GatewayOk[T] | GatewayFallback[T]:
     """Run one agent call. Validation retries happen inside the agent (its retries setting)."""
+    started = time.monotonic()
     try:
         result = await asyncio.wait_for(agent.run(prompt, model=model, deps=deps), timeout)
+    except asyncio.CancelledError:
+        # Not a model failure: a caller's time limit stopped the call. Recorded, then passed on unchanged.
+        _trace_call(agent, model, started, "cancelled")
+        raise
     except TimeoutError:
+        _trace_call(agent, model, started, "timeout", timeout_seconds=timeout)
         return GatewayFallback(value=fallback, failure="timeout", detail=f"no reply within {timeout}s")
     except UnexpectedModelBehavior as exc:
+        _trace_call(agent, model, started, "invalid_output", detail=str(exc))
         return GatewayFallback(value=fallback, failure="invalid_output", detail=str(exc))
     except (ModelAPIError, BotoCoreError) as exc:
         # BotoCoreError: failures before or around the HTTP call that the model library does not wrap
         # (missing credentials, connection and read timeouts, endpoint errors).
+        _trace_call(agent, model, started, "provider_error", error=exc)
         return GatewayFallback(value=fallback, failure="provider_error", detail=f"{type(exc).__name__}: {exc}")
+    _trace_call(agent, model, started, "ok", result=result)
     return GatewayOk(value=result.output)
+
+
+def _provider_error(exc: Exception) -> tuple[str, dict[str, Any]]:
+    """What the provider said, for the trace: the HTTP status, its error code and request id (never headers)."""
+    if not isinstance(exc, ModelHTTPError):
+        return "provider_connection_error", {"detail": f"{type(exc).__name__}: {exc}"}
+    body = exc.body if isinstance(exc.body, dict) else {}
+    error = body.get("Error") if isinstance(body.get("Error"), dict) else {}
+    meta = body.get("ResponseMetadata") if isinstance(body.get("ResponseMetadata"), dict) else {}
+    return "provider_http_error", {
+        "http_status": exc.status_code,
+        "provider_error_code": error.get("Code"),
+        "provider_error_message": error.get("Message"),
+        "request_id": meta.get("RequestId"),
+        "sdk_retry_attempts": meta.get("RetryAttempts"),
+        "transient": exc.status_code == 429 or exc.status_code >= 500,
+    }
+
+
+def _trace_call(
+    agent: Agent[Any, Any], model: Model, started: float, outcome: str, result: Any = None,
+    error: Exception | None = None, **fields: Any,
+) -> None:
+    """One MODEL_CALL event. Tracing never changes the call: anything that goes wrong here is only logged."""
+    if not trace.active():
+        return
+    try:
+        if error is not None:
+            outcome, provider_fields = _provider_error(error)
+            fields |= provider_fields
+        if result is not None:
+            usage = result.usage
+            fields |= {"requests": usage.requests, "input_tokens": usage.input_tokens,
+                       "output_tokens": usage.output_tokens}
+        trace.record(
+            trace.ModelCall, operation=agent.name, provider=model.system, model=model.model_name, outcome=outcome,
+            latency_ms=round((time.monotonic() - started) * 1000), **fields,
+        )
+    except Exception:
+        log.error("trace: could not record a model call", exc_info=True)

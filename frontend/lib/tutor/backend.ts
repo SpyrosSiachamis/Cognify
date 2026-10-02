@@ -6,6 +6,16 @@ import { gapLabel, modeLabel, strategyLabel } from "../vocab";
 import { fromText } from "./rich";
 import type { Beat, MasterSession, StudentInput, Turn, TutorService, Widget } from "./types";
 
+// Why a safe fallback was sent, in the backend's own terms (reply_check.outcome). An unknown or missing outcome
+// is reported as just a fallback: the screen never claims a cause the backend did not state.
+const FALLBACK_CAUSE: Record<string, string> = {
+  verifier_rejected: "Verifier rejected the reply",
+  teaching_failed: "Teaching step failed",
+  verifier_error: "Verifier could not check the draft",
+  wrong_language: "Draft in the wrong language",
+  turn_failed: "Turn failed",
+};
+
 const FIRST_IDEA: Widget = { kind: "reply", kicker: "Your first idea", placeholder: "Write your first idea, a plan, or an equation…", first: true };
 const REPLY: Widget = { kind: "reply", kicker: "Your answer", placeholder: "Write your answer or your next step…", first: false };
 
@@ -30,7 +40,7 @@ function tutorTurn(turn: TutorTurn): Turn {
     const m = turn.method;
     beats.push({ method: m }, { log: { b: m.experiment ? "Teaching move · experiment" : "Teaching move", s: `${strategyLabel(m.name)} · ${modeLabel(m.mode)}`, k: "ai" } });
   }
-  if (!turn.reply_check.approved) beats.push({ log: { b: "Reply not approved by the verifier", s: turn.reply_check.summary } });
+  if (!turn.reply_check.approved) beats.push({ log: { b: FALLBACK_CAUSE[turn.reply_check.outcome ?? ""] ?? "Safe fallback sent", s: turn.reply_check.summary } });
 
   if (turn.phase === "stress_test" && turn.follow_up) {
     beats.push(

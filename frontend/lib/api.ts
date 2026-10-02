@@ -25,7 +25,10 @@ export type Step = { role: StepRole; status: StepStatus; quote: string | null };
 export type Alternative = { gap: GapType; confidence: Confidence };
 export type DiagnosisView = { steps: Step[]; main_gap: GapType | null; alternatives: Alternative[]; confidence: Confidence };
 export type MethodView = { name: Strategy; mode: DecisionMode; experiment: boolean; reason: string };
-export type ReplyCheckView = { approved: boolean; summary: string };
+// How the reply came to be what the student saw (backend: ReplyOutcome). Only verifier_rejected means the
+// verifier turned the drafts down; the other failures happened before or around the check.
+export type ReplyOutcome = "approved" | "fixed_reply" | "verifier_rejected" | "teaching_failed" | "verifier_error" | "wrong_language" | "turn_failed";
+export type ReplyCheckView = { approved: boolean; summary: string; outcome?: ReplyOutcome };
 export type TutorTurn = {
   session_id: string;
   phase: Phase; // "teach" or "stress_test"

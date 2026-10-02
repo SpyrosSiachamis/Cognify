@@ -1,11 +1,13 @@
-"""Learner shapes (docs/API_CONTRACT.md, Part A): the two learner views and the error shape."""
+"""Learner shapes (docs/API_CONTRACT.md, Part A): the two learner views and the error shape; and the
+development session-trace views (only served when DEBUG_TRACE is on)."""
 
 from typing import Annotated
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
+from pydantic import UUID4, AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.common.contract import CONCEPT, MARIA, contract
-from app.common.vocab import GapType, State, Strategy
+from app.common.vocab import GapType, Phase, SessionStatus, State, Strategy
+from app.history.schema import TraceEvent
 
 Text = Annotated[str, Field(min_length=1)]
 
@@ -110,3 +112,31 @@ class ErrorResponse(StrictModel):
     )
 
     error: ErrorBody
+
+
+# ---- development session trace (DEBUG_TRACE only; never on a public deployment: it holds hidden solutions) ----
+
+
+class TraceSummary(StrictModel):
+    session_id: UUID4
+    student_id: UUID4
+    problem: str
+    status: SessionStatus
+    phase: Phase
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None
+    events: int
+
+
+class TraceIndex(StrictModel):
+    sessions: list[TraceSummary]
+
+
+class SessionTraceView(StrictModel):
+    session_id: UUID4
+    events: list[TraceEvent]
+
+
+class TraceExport(StrictModel):
+    exported_at: AwareDatetime
+    sessions: list[SessionTraceView]

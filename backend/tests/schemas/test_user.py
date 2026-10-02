@@ -39,14 +39,14 @@ TEACH = {
     "method": {"name": "visual_decomposition", "mode": "best_known", "experiment": False,
                "reason": "Worked 7 of 9 times for you on recognition gaps."},
     "hints_used": 0,
-    "reply_check": {"approved": True, "summary": "No answer given. Method matches: visual_decomposition."},
+    "reply_check": {"approved": True, "summary": "No answer given. Method matches: visual_decomposition.", "outcome": "approved"},
 }
 STRESS = {
     "session_id": SESSION, "phase": "stress_test",
     "message": "Now I am removing the support. New problem, same underlying idea, different surface.",
     "follow_up": {"problem": "A stone is launched upward at 15 m/s from a balcony. How far above the balcony does it rise before it stops? (Use g = 9.8 m/s^2)"},
     "hints_used": 1,
-    "reply_check": {"approved": True, "summary": "Follow-up keeps the principle, changes the context, does not state the answer."},
+    "reply_check": {"approved": True, "summary": "Follow-up keeps the principle, changes the context, does not state the answer.", "outcome": "approved"},
 }
 VERDICT = {
     "session_id": SESSION, "phase": "verdict", "session_over": True,

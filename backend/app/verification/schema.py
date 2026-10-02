@@ -45,6 +45,8 @@ class ReplyCheckInput(StrictModel):
     error_mismatch: str | None = None  # what the student's result really is versus what is needed
     method_definition: str | None = None  # what the chosen method requires of a reply
     language: str | None = None
+    # The student's own derived results (quotes), which a reply may repeat or confirm: not a leak.
+    student_demonstrated: list[str] = []
 
 
 class FollowUpCheckInput(StrictModel):

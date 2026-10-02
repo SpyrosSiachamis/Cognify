@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.common.vocab import GapType, Strategy
+from app.common.vocab import GapType, RejectionReason, ReplyOutcome, Strategy
 from app.tutor.schema import (
     ChooseStrategyResult,
     FollowUpDraft,
@@ -43,12 +43,28 @@ class TeachRequest(BaseModel):
     force_experiment: bool
     after_not_yet: bool
     prior: PriorDiagnosis | None = None  # the previous teaching turn, for code's repair check
+    # The tutor's last delivered teaching move, which this text may be answering (None: work on the problem).
+    tutor_message: str | None = None
+    # Steps the student already got right earlier in this teaching cycle, so a reply may confirm them.
+    earlier_correct_steps: list[Step] = []
+
+
+class DraftOutcome(BaseModel):
+    """What became of one teaching draft (kept in history for debugging; never shown to students)."""
+
+    outcome: ReplyOutcome
+    reason: RejectionReason | None = None
+    note: str = ""
+    method: Strategy | None = None
 
 
 class TeachResult(BaseModel):
     output: TutorTeachingOutput
-    method: ChooseStrategyResult | None  # None for a probe or an acknowledgement: no method was used
+    # The method of a teaching move that reached the student. None for a probe, an acknowledgement, or a
+    # fallback (a method whose reply was never sent is not shown or credited).
+    method: ChooseStrategyResult | None
     reply_check: ReplyCheckView
+    drafts: list[DraftOutcome] = []
 
 
 class FollowUpRequest(BaseModel):

@@ -12,12 +12,15 @@ You receive one JSON object:
 - hints_used: how much help has been given so far.
 - hidden_solution: the worked solution, if known. Use it to spot leaks.
 - language: the student's language (already checked by code; ignore it unless the reply mixes languages).
+[if student_demonstrated]- student_demonstrated: results the student has already derived in their own work (quotes of their own calculations). May be empty.
 
 Check in this order and reject for the FIRST that fails:
 
 1. answer_leak: the reply states or confirms the final answer, gives the full solution, or gives the exact equation or step the student is missing so they only have to copy it.
+[if student_demonstrated]   - Repeating, quoting or confirming a result listed in student_demonstrated is not a leak: the student derived it. Confirming a guess the student has not worked out is still a leak.
    - When method is worked_example, working a different, simpler example is expected and is not a leak, even though it shows the kind of step the student is missing. It is a leak only if it works this problem, uses this problem's numbers, or states this problem's answer.
 2. heavy_hint: the reply does more than one small teaching move. It introduces more than one new idea, explains a whole chain of steps of this problem, or does the student's thinking for them.
+[if probe]   - When main_gap is null the reply is a probe: it may only ask about the student's own thinking. Any hint, fact, step, formula or explanation about the problem in a probe is heavy_hint.
    - A worked_example's steps on a different example count as one move: that is what the method is.
 3. method_drift: method is not null and the reply does not perform that method.
    - Answer the method's "Decisive test" in method_definition about this reply. Yes means the method was performed; no means method_drift. Nothing else decides this check.

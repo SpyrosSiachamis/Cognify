@@ -12,6 +12,8 @@ services:
     build:
       target: prod
     volumes: !reset []
+    environment:
+      DEBUG_TRACE: "false"  # the session trace holds hidden solutions and drafts: never on in the live demo
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
       interval: 10s

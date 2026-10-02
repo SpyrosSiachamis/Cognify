@@ -24,6 +24,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DEBUG_TRACE: ${DEBUG_TRACE:-true}  # the development session trace; local stack only
     ports:
       - "8000:8000"
     volumes:

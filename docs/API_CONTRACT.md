@@ -32,14 +32,17 @@ Design in brief: the student talks to one tutor interface. Behind it, a **reason
 | `POST /api/session/{id}/exit` | Student explicitly leaves Master | Frontend (Exit button) | none | phase `exited`, the solution, `evidence_recorded: false` | session marked exited; no evidence | F6 |
 | `GET /api/learner/{student_id}` | Understanding Map view | Frontend (My Learning) | student id in path | `LearnerView` | nothing | F18, F24 |
 | `GET /api/strategies/{student_id}` | How You Learn view | Frontend (My Learning) | student id in path | `StrategyView` | nothing | F19, F24 |
+| `GET /api/session/{id}/debug-trace` | Development only: the session's trace, every event in order | Developers (never the frontend) | session id in path | `SessionTraceView` | nothing | F25, F30 |
+| `GET /api/debug-trace` | Development only: the traced sessions (id, problem, status, event count) | Developers | none | `TraceIndex` | nothing | F25, F30 |
+| `GET /api/debug-trace/export` | Development only: several sessions' traces in one JSON, for analysis across sessions | Developers | optional repeated `session_id` query | `TraceExport` | nothing | F25, F30 |
 
 ### Schemas
 
 **`StudentAttempt`**: just the student's text (1 to 2000 characters). Same shape on every turn. Whitespace-only text gets a short probe and is not saved.
 
-**`TutorTurn`**: `session_id`; `phase`; `message` (the approved reply); optional `diagnosis` (steps with role, status and a quote of the student's words; main gap, or `null` when no gap is demonstrated (every step holds) or the evidence is insufficient (then the reply is a probe); alternatives with a confidence label each; confidence label); optional `method` (name, `mode`, experiment flag, reason; `null` on a probe or when nothing needs teaching); optional `follow_up` (problem text only, never the rubric); `hints_used`; `reply_check` (approved flag and a short summary).
+**`TutorTurn`**: `session_id`; `phase`; `message` (the approved reply); optional `diagnosis` (steps with role, status and a quote of the student's words; main gap, or `null` when no gap is demonstrated (every step holds) or the evidence is insufficient (then the reply is a probe); alternatives with a confidence label each; confidence label); optional `method` (name, `mode`, experiment flag, reason; `null` on a probe or when nothing needs teaching); optional `follow_up` (problem text only, never the rubric); `hints_used` (approved teaching moves the student has answered; fallbacks, probes and acknowledgements do not count); `reply_check` (approved flag, a short summary, and `outcome`: why the student saw this reply, one of the reply outcome values. Only `verifier_rejected` means the verifier turned the drafts down; `method` is `null` whenever the reply is a fallback).
 
-**`Verdict`**: `result` (`VERIFIED` or `NOT YET`); `evidence`; `independent`; `remaining_gap`; `changes` with the before and after of the concept state and of the strategy counts (`changes.strategy` is `null` when the session used no teaching method, for example a correct first thought). The verdict response also carries `session_over`: `true` after VERIFIED or after the second NOT YET (then `message` says what was learned and offers to exit), `false` after a first NOT YET. After a `false`, the student sends a normal attempt and gets a `teach` turn.
+**`Verdict`**: `result` (`VERIFIED` or `NOT YET`); `evidence`; `independent`; `remaining_gap`; `changes` with the before and after of the concept state and of the strategy counts (`changes.strategy` is `null` when the session used no teaching method, for example a correct first thought). The verdict response also carries `session_over`: `true` after VERIFIED or after the second NOT YET (then `message` says what was learned and offers to exit), `false` after a first NOT YET. After a `false`, the student sends a normal attempt and gets a `teach` turn. That repair cycle works on the fresh problem the NOT YET was given on (the student still sees it): the backend solves it once when the NOT YET is recorded (if that fails the verdict is not recorded and the call returns 503, so it can be resent), and the diagnosis reads the next answers against it and its own answer. Solving it is never VERIFIED: once it holds, the session moves on to a new fresh problem. The session's own problem, its solution (returned on exit), the concept and the learner record stay the original problem's.
 
 **`LearnerView`**: student, seeded flag, concepts each with state and evidence lines.
 
@@ -64,6 +67,9 @@ Design in brief: the student talks to one tutor interface. Behind it, a **reason
 | session status | `active`, `verified`, `not_yet_ended`, `exited` |
 | attempt kind | `first_thought`, `teaching_reply`, `follow_up_attempt` |
 | gateway failure | `invalid_output`, `timeout`, `provider_error` |
+| not yet reason | `incorrect`, `not_own_work`, `hint_limit` (only the first two are evidence that the student could not do it) |
+| response to | `original_problem`, `tutor_question`, `other_problem`, `clarification`, `acknowledgement` |
+| reply outcome | `approved`, `fixed_reply`, `verifier_rejected`, `teaching_failed`, `verifier_error`, `wrong_language`, `turn_failed` |
 
 ### Demo mode
 
@@ -152,7 +158,7 @@ Response, phase `teach` (the first diagnosis, a method chosen by the tool, and o
     "reason": "Worked 7 of 9 times for you on recognition gaps."
   },
   "hints_used": 0,
-  "reply_check": { "approved": true, "summary": "No answer given. Method matches: visual_decomposition." }
+  "reply_check": { "approved": true, "summary": "No answer given. Method matches: visual_decomposition.", "outcome": "approved" }
 }
 ```
 
@@ -167,7 +173,7 @@ Response, phase `stress_test` (support removed; only the problem text, never the
     "problem": "A stone is launched upward at 15 m/s from a balcony. How far above the balcony does it rise before it stops? (Use g = 9.8 m/s^2)"
   },
   "hints_used": 1,
-  "reply_check": { "approved": true, "summary": "Follow-up keeps the principle, changes the context, does not state the answer." }
+  "reply_check": { "approved": true, "summary": "Follow-up keeps the principle, changes the context, does not state the answer.", "outcome": "approved" }
 }
 ```
 
@@ -277,6 +283,12 @@ After the second NOT YET the same shape is returned with `session_over: true`, a
 }
 ```
 
+### Development session trace (DEBUG_TRACE only)
+
+The three `debug-trace` endpoints answer 404 unless the backend runs with `DEBUG_TRACE=true` (on by default in the local Docker stack, off everywhere else). **Never turn it on in a public deployment:** the trace holds the hidden solution, the follow-up rubric, the student's text and every teaching draft. It holds no credentials, no request or response headers and no account data (provider error headers and configured secret values are cut before an event is kept).
+
+Each event: `id`, `session_id`, `sequence` (0, 1, 2, … in order), `turn` (0 is the start; then one per attempt or exit call), `at`, `event_type` and a typed `payload`. Event types, in the order a turn produces them: `STUDENT_RESPONSE`, `MODEL_CALL` (one per model call: operation, provider, model, outcome `ok` / `provider_http_error` / `provider_connection_error` / `timeout` / `invalid_output`, latency, tokens, and for a provider error its HTTP status, error code, request id, SDK retries and whether it was transient), `REASONING_READ` (what the diagnosis model got and proposed), `DIAGNOSIS_RESULT` (the diagnosis teaching received, the mode and the method chosen), `TEACHING_GENERATION_STARTED` / `TEACHING_GENERATION_RESULT` / `VERIFIER_RESULT` (one each per draft, with the draft text and the verifier's reason and note), `TEACHING_FALLBACK` (every rejected draft and the fallback sent), `REPLY_SENT` (what the student saw, and whether it counts as a hint), `STATE_TRANSITION`, `SUPPORT_REMOVED`, `FOLLOW_UP_STARTED`, `FOLLOW_UP_RESULT`, `FRESH_PROBLEM_GENERATED`, `TRANSFER_RESULT`, `SESSION_ERROR` (what failed, and the exceptions behind it) and `SESSION_STARTED` / `SESSION_ENDED`. The trace records what the runtime knows (for example a `method_drift` rejection and the draft it rejected); whether a rejection was right is for the people reading it to decide. Recording never changes the flow: an event that cannot be built is logged and dropped.
+
 ### Error shape (all endpoints)
 
 ```json
@@ -311,7 +323,7 @@ For the teammate building the AI side. These never cross to the frontend.
 
 One teaching turn is two model calls with code in between (`app/tutor/agent.py`):
 
-- **Reasoning step in:** problem, the student's text, the final answer. Never the method, the history or the solution route.
+- **Reasoning step in:** problem, the student's text, the final answer, and `tutor_message`: the last tutor reply the student saw (a teaching move, a probe or a safe fallback; after a NOT YET, the verdict message), absent for the first thought and for the first answer after a fresh problem is shown. It is context only and is separate from hint counting. After a first NOT YET, `problem` and the final answer are the failed fresh problem's. Never the method's name, definition or reason, the history or the solution route. Out, besides the fields below: `response_to` (what the message answers); code reads anything other than `original_problem` as no evidence about the whole problem (an answer to a sub-question keeps only its asked steps; a clarification, an acknowledgement or work on another problem is insufficient evidence).
 - **Reasoning step out (`TutorDiagnosis`):** steps with role, status and quote; dimension ratings with evidence; `main_gap` (nullable); alternatives; confidence label; `evidence` (`sufficient` or `insufficient`); optional `error` for a wrong step: `student_did`, `actually_gives`, `asked_for`, `mismatch` (what the student's result really is versus what is needed). The teaching step targets the mismatch; the reply verifier checks that the reply does.
 - **Code:** the model proposes a draft; code decides. A step whose quote cannot be found in the student's text (allowing for formatting) is not observed and is dropped, never turned into a missing step. In work with no gap and no wrong step, unnarrated missing steps are dropped too. A wrong step must state its `error`. All steps missing with nothing to go on means insufficient evidence; all steps correct means no gap. `gap_repaired` is decided by code: the step where the previous gap showed (`TeachRequest.prior`) is now correct. The mode is `teach`, `probe` (insufficient evidence, no gap being taught) or `acknowledge` (no gap, or repaired: fixed message, no teaching call).
 - **Teaching step in:** the finished diagnosis, the gap step, the `choose_strategy` result (or none for a probe), and the retry reason after a rejection. **Out:** the reply only. On rejection only this step reruns, so the diagnosis cannot change.
@@ -366,10 +378,10 @@ Follow-up problem:
 
 - **In:** a tutor reply (reply check), a follow-up problem (follow-up check), or the student's follow-up attempt with the hidden rubric (student check).
 - **Out:** mode (`reply_check`, `follow_up_check`, `student_check`); approved or rejected; rejection reason (`answer_leak`, `heavy_hint`, `method_drift`, `off_target`, `shaming_tone` for replies; `invalid_followup`, `answer_leak` for follow-ups; `not_independent` for the student check); a short note; for the student check: correct, reasoning quality label, and the independence input (`own_work`).
-- **Reply check in:** also the diagnosed gap, the gap step with the student's words, the error mismatch, the chosen method's definition (`app/tutor/methods.py`, the same text the teaching step gets) and the language. Method adherence is judged by what the move does, not by its words.
+- **Reply check in:** also the diagnosed gap, the gap step with the student's words, the error mismatch, the chosen method's definition (`app/tutor/methods.py`, the same text the teaching step gets) and the language. Method adherence is judged by what the move does, not by its words. Also `student_demonstrated`: results the student derived in their own work (a correct compute or interpret step that shows the calculation, from answers with no wrong step in this teaching cycle). Repeating or confirming those is not an answer leak, and code leaves them out of its own leak search; a guess, a quantity given in the problem or an unworked value is never demonstrated. A probe (no gap) may only ask about the student's thinking: any hint in it is `heavy_hint`.
 - **Follow-up check:** code first rejects a follow-up that is the original with new numbers (word overlap) or in the wrong language; then the verifier checks principle, target step, solvability and that it gives no hint or answer.
 - **Student check:** code also sets `own_work` to false when the answer shows no reasoning (a bare result), whatever the verifier said.
-- **Consumer:** code. A rejected reply is regenerated with the reason up to 2 times, then the safe fallback question is sent. A rejected follow-up is regenerated up to 2 times; if none passes, or the student check fails, the call raises and the session returns a retryable error (there is no fake follow-up and no fake judgement). The final VERIFIED decision is code's (hint count and independence come from code, not from the verifier alone).
+- **Consumer:** code. A rejected reply is regenerated with the reason up to 2 times, then the safe fallback is sent. The fallback is written by code from the turn's diagnosis and says why another answer is needed: the student's own unsure sentence (only if they wrote one), the step of theirs that does not hold yet, the result whose working is not shown, a bare answer with no calculation, or, when working was sent but could not be placed on the problem's steps, that the matching failed (it does not ask for that working again as if it were missing; the trace marks it `evidence_unrecognized`). It quotes only the student, never the solution, the error analysis or an internal label, and it is never a hint. A rejected follow-up is regenerated up to 2 times; if none passes, or the student check fails, the call raises and the session returns a retryable error (there is no fake follow-up and no fake judgement). The final VERIFIED decision is code's (hint count and independence come from code, not from the verifier alone).
 
 Rejected reply:
 

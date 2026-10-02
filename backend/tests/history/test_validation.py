@@ -142,3 +142,52 @@ def test_naive_timestamp_rejected():
 def test_empty_text_rejected():
     with pytest.raises(ValidationError):
         Student(display_name="")
+
+
+# ---- NOT YET reasons and the verified-concept rule ----
+
+
+def test_a_not_yet_needs_a_reason_unless_seeded():
+    with pytest.raises(ValidationError, match="needs a reason"):
+        outcome(result="NOT YET", independent=False, concept_after="fragile")
+    seeded = outcome(result="NOT YET", independent=False, concept_after="fragile", session_id=None, is_seeded=True)
+    assert seeded.not_yet_reason is None
+
+
+def test_a_verified_outcome_has_no_not_yet_reason():
+    with pytest.raises(ValidationError, match="no NOT YET reason"):
+        outcome(not_yet_reason="hint_limit")
+
+
+def test_a_hint_limit_not_yet_may_keep_a_verified_concept_verified():
+    kept = outcome(result="NOT YET", not_yet_reason="hint_limit", independent=False,
+                   concept_before="verified", concept_after="verified")
+    assert kept.concept_after == "verified"
+
+
+@pytest.mark.parametrize("reason", ["incorrect", "not_own_work"])
+def test_only_hint_limit_keeps_a_verified_concept_verified(reason):
+    with pytest.raises(ValidationError, match="only on a VERIFIED result"):
+        outcome(result="NOT YET", not_yet_reason=reason, independent=False,
+                concept_before="verified", concept_after="verified")
+
+
+def test_a_not_yet_never_moves_a_concept_into_verified():
+    with pytest.raises(ValidationError, match="only on a VERIFIED result"):
+        outcome(result="NOT YET", not_yet_reason="hint_limit", independent=False,
+                concept_before="fragile", concept_after="verified")
+
+
+def test_a_reply_draft_has_a_reason_exactly_when_the_verifier_rejected_it():
+    from app.history.schema import ReplyDraft
+    from uuid import uuid4
+
+    sid = uuid4()
+    assert ReplyDraft(session_id=sid, position=0, outcome="verifier_rejected", reason="method_drift").reason
+    assert ReplyDraft(session_id=sid, position=0, outcome="teaching_failed", note="timeout").reason is None
+    with pytest.raises(ValidationError):
+        ReplyDraft(session_id=sid, position=0, outcome="verifier_rejected")
+    with pytest.raises(ValidationError):
+        ReplyDraft(session_id=sid, position=0, outcome="approved", reason="answer_leak")
+    with pytest.raises(ValidationError):
+        ReplyDraft(session_id=sid, position=0, outcome="turn_failed")

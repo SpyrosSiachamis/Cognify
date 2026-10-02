@@ -8,11 +8,13 @@ counts only with new evidence in the student's own words, and only if the model'
 own reading of the turn does not contradict it.
 """
 
+import re
+
 from pydantic import BaseModel, ConfigDict
 
 from app.common.vocab import GapType, StepRole, values
 
-from .evidence import NOT_KNOWING, normalise
+from .evidence import NOT_KNOWING, normalise, substantive
 from .schema import PriorDiagnosis, Step, TutorDiagnosis
 
 ROLE_ORDER: tuple[StepRole, ...] = values(StepRole)  # type: ignore[assignment]
@@ -66,6 +68,8 @@ def assess_repair(prior: PriorDiagnosis | None, current: TutorDiagnosis) -> Repa
         return _not_repaired("no gap was being taught")
     gap = prior.main_gap
     before = gap_step(prior.steps, gap)
+    if current.response_to != "original_problem":
+        return _repair_from_partial_answer(prior, current, before)
     all_correct = bool(current.steps) and all(s.status == "correct" for s in current.steps)
     # A role can be listed twice (correct work so far, then the part still to do): the part still to do decides.
     at_role = [s for s in current.steps if before and s.role == before.role]
@@ -95,6 +99,30 @@ def assess_repair(prior: PriorDiagnosis | None, current: TutorDiagnosis) -> Repa
 
     where = f"{now.role}: \"{evidence}\"" if now is not None else "every step now holds"
     return RepairCheck(repaired=True, reason=f"{gap} gap repaired at {where}")
+
+
+# An operation in the student's own words: the work, not just a value.
+_OPERATION = re.compile(r"[=+\-*/×÷^]|\b(plus|minus|times|divided|multiplied|over)\b", re.I)
+
+
+def _repair_from_partial_answer(prior: PriorDiagnosis, current: TutorDiagnosis, before: Step | None) -> RepairCheck:
+    """An answer to a tutor sub-question (or anything that is not work on the whole problem) repairs the gap only
+    with new, worked evidence at the very step where the gap showed. "Every listed step is correct" proves
+    nothing here: the student was only asked about part of the problem."""
+    if before is None:
+        return _not_repaired("the previous turn has no step where the gap showed")
+    if current.response_to != "tutor_question":
+        return _not_repaired(f"{current.response_to}: no work on this problem")
+    shown = [s for s in current.steps if s.role == before.role and s.status == "correct" and s.quote]
+    # A calculation step needs the calculation shown; other steps need a substantive answer in the student's words.
+    worked = [s for s in shown if substantive(s.quote) and (s.role not in ("substitute", "compute") or _OPERATION.search(s.quote))]
+    seen = {normalise(s.quote) for s in prior.steps if s.quote}
+    new = [s for s in worked if normalise(s.quote) not in seen and not NOT_KNOWING.search(s.quote)]
+    if not new:
+        return _not_repaired(f"{before.role}: no new worked answer at the step where the gap showed")
+    if current.main_gap == prior.main_gap or any(s.status == "wrong" for s in current.steps):
+        return _not_repaired(f"conflict: the answer still shows a {prior.main_gap} gap")
+    return RepairCheck(repaired=True, reason=f"{prior.main_gap} gap repaired at {before.role}: \"{new[0].quote}\"")
 
 
 def repaired(prior: PriorDiagnosis | None, current: TutorDiagnosis) -> bool:

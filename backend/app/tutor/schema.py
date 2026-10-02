@@ -17,6 +17,8 @@ from app.common.vocab import (
     Phase,
     Rating,
     RejectionReason,
+    ReplyOutcome,
+    ResponseTo,
     StepRole,
     StepStatus,
     Strategy,
@@ -118,6 +120,8 @@ class TutorDiagnosis(StrictModel):
     confidence: Confidence
     evidence: Evidence = "sufficient"
     error: ErrorAnalysis | None = None  # set when a step is wrong: the precise target for teaching
+    # What the message answered. Anything other than original_problem is never read as the whole solution.
+    response_to: ResponseTo = "original_problem"
 
     @model_validator(mode="after")
     def diagnosis_is_consistent(self) -> "TutorDiagnosis":
@@ -156,6 +160,7 @@ class ReasoningDraft(StrictModel):
     confidence: Confidence
     evidence: Evidence = "sufficient"
     error: ErrorAnalysis | None = None
+    response_to: ResponseTo = "original_problem"
 
 
 class TutorTeachingOutput(TutorDiagnosis):
@@ -178,11 +183,18 @@ TeachingMode = Literal["teach", "probe"]
 
 
 class ReasoningInput(StrictModel):
-    """The reasoning step sees the student's work only: no method, no history, no solution route."""
+    """The reasoning step sees the student's work, and the tutor message it answers: never the method, its
+    definition or reason, the history, or the solution route."""
 
     problem: Text
     attempt: Text
     final_answer: str | None = None
+    # The tutor's last delivered teaching move, when the student is answering it (None: the attempt is work
+    # on the problem itself). Sent only when set, so a first thought reads exactly as before.
+    tutor_message: str | None = None
+
+    def prompt(self) -> str:
+        return self.model_dump_json(indent=2, exclude={"tutor_message"} if self.tutor_message is None else None)
 
 
 class TeachingInput(StrictModel):
@@ -308,6 +320,15 @@ class FollowUpView(StrictModel):
 class ReplyCheckView(StrictModel):
     approved: bool
     summary: Text
+    # Why the student saw this reply: telemetry, so a fallback is never reported as a verifier rejection
+    # unless it was one.
+    outcome: ReplyOutcome
+
+    @model_validator(mode="after")
+    def approved_matches_outcome(self) -> "ReplyCheckView":
+        if self.approved != (self.outcome in ("approved", "fixed_reply")):
+            raise ValueError("approved is true exactly when the outcome is approved or fixed_reply")
+        return self
 
 
 class TutorTurn(StrictModel):
@@ -333,7 +354,7 @@ class TutorTurn(StrictModel):
                 "reason": "Worked 7 of 9 times for you on recognition gaps.",
             },
             "hints_used": 0,
-            "reply_check": {"approved": True, "summary": "No answer given. Method matches: visual_decomposition."},
+            "reply_check": {"approved": True, "summary": "No answer given. Method matches: visual_decomposition.", "outcome": "approved"},
         },
         {
             "session_id": SESSION,
@@ -341,7 +362,7 @@ class TutorTurn(StrictModel):
             "message": "Now I am removing the support. New problem, same underlying idea, different surface.",
             "follow_up": {"problem": "A stone is launched upward at 15 m/s from a balcony."},
             "hints_used": 1,
-            "reply_check": {"approved": True, "summary": "Follow-up keeps the principle."},
+            "reply_check": {"approved": True, "summary": "Follow-up keeps the principle.", "outcome": "approved"},
         },
     )
 

@@ -133,7 +133,20 @@ def test_the_script_notices_when_a_retry_costs_an_extra_hint(serve_tutor, capsys
         original(self, *args, **kwargs)
         self._follow_up_owed = NeverOwed()
 
+    # A turn that moves on is never counted as help, so also count the failed one as a delivered move;
+    # otherwise teaching again would be free and the script would have nothing to notice
+    original_stress = SessionService._stress_test
+
+    async def broken_stress(self, session, main_gap):
+        try:
+            return await original_stress(self, session, main_gap)
+        except Exception:
+            session.last_reply_taught = True
+            self._store.update_session(session)
+            raise
+
     monkeypatch.setattr(SessionService, "__init__", broken_init)
+    monkeypatch.setattr(SessionService, "_stress_test", broken_stress)
     url = serve_tutor(ScriptedTutor(fail_once={"follow_up"}))
     code = load_script().main(["--base-url", url, "--shape-only", "--student", "maria"])
     out = capsys.readouterr().out
