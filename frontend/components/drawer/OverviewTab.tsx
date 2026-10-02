@@ -2,6 +2,7 @@
 
 import { provenConcepts } from "@/lib/backend";
 import { useApp } from "../AppProvider";
+import { NotVerifiedCard } from "./NotVerifiedCard";
 
 const mmss = (s: number) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
 
@@ -29,6 +30,7 @@ export function OverviewTab() {
           <p>{session.verdict ? session.verdict.evidence : "The verdict comes after the fresh problem."}</p>
         </div>
       </div>
+      {session.verdict?.result === "NOT YET" && <NotVerifiedCard verdict={session.verdict} hintsUsed={session.hintsUsed} over={session.over} />}
       <div className="paper">
         <div className="side-title">
           <h3>This session</h3>

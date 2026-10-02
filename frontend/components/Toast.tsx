@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useApp } from "./AppProvider";
+import { memo, useEffect, useState } from "react";
+import { useActions, useAppSelector } from "./AppProvider";
 
 /* A small pill at the bottom: "Cognify found where you get stuck  [See it]". It fades after seven seconds. */
-export function Toast() {
-  const { state, dispatch } = useApp();
-  const toast = state.toast;
+export const Toast = memo(function Toast() {
+  const { dispatch } = useActions();
+  const toast = useAppSelector((s) => s.toast);
   // Keep the last message so the text does not vanish while the pill fades out.
   const [shown, setShown] = useState(toast);
   if (toast && toast !== shown) setShown(toast);
@@ -25,4 +25,4 @@ export function Toast() {
       </button>
     </div>
   );
-}
+});

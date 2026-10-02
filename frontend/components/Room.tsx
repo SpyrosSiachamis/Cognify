@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { room } from "@/lib/room";
+import { useAppSelector } from "./AppProvider";
 
 /* The dark library behind everything. The drawing code is in lib/room.ts. */
-export function Room() {
+export const Room = memo(function Room() {
   const stage = useRef<HTMLDivElement>(null);
   const scene = useRef<HTMLCanvasElement>(null);
   const motes = useRef<HTMLCanvasElement>(null);
@@ -12,6 +13,9 @@ export function Room() {
   const cursor = useRef<HTMLDivElement>(null);
   const veil = useRef<HTMLDivElement>(null);
   const flash = useRef<HTMLDivElement>(null);
+  // While the Progress drawer or the seal covers the page, the room holds still.
+  const covered = useAppSelector((s) => s.sheetOpen || s.sealOpen);
+  useEffect(() => room.setPaused(covered), [covered]);
 
   useEffect(
     () =>
@@ -44,4 +48,4 @@ export function Room() {
       <canvas id="cvSparks" ref={sparks} aria-hidden="true" />
     </>
   );
-}
+});
