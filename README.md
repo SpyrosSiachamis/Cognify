@@ -103,8 +103,8 @@ Start with `docs/ARCHITECTURE.md` before touching the backend.
 
 | Area | Owner |
 |---|---|
-| Tutor agent, verification, AI gateway, history | _add name / GitHub handle_ |
-| Frontend | _add name / GitHub handle_ |
-| User module (session flow and routes), demo tooling | _add name / GitHub handle_ |
+| Tutor agent, verification, AI gateway, history | Spyridon Siahamis ([@SpyrosSiachamis](https://github.com/SpyrosSiachamis)) |
+| Frontend | Vasiliki Tsiouvra ([@vasilikitsiourva](https://github.com/vasilikitsiourva)) |
+| User module (session flow and routes), demo tooling | Spyridon Apostolakis ([@spapostolak](https://github.com/spapostolak)) |
 
 Open a pull request into `main`; do not push to `main` directly.
