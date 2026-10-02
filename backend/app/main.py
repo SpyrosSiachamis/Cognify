@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator, Mapping
 from functools import lru_cache
@@ -16,6 +17,31 @@ from app.user.service import SessionService
 
 
 log = logging.getLogger(__name__)
+
+
+DEFAULT_CORS_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
+_ORIGIN = re.compile(r"^https?://[^/\s,]+$")
+
+
+def cors_origins(env: Mapping[str, str] = os.environ) -> list[str]:
+    """The frontend addresses the browser may call this API from: CORS_ORIGINS (comma separated, it replaces
+    the local defaults), for example the deployed frontend's address. Wildcards and malformed entries stop the start."""
+    raw = env.get("CORS_ORIGINS", "").strip()
+    if not raw:
+        return list(DEFAULT_CORS_ORIGINS)
+    origins: list[str] = []
+    for entry in raw.split(","):
+        origin = entry.strip().rstrip("/")
+        if origin == "*":
+            raise RuntimeError("CORS_ORIGINS must not be '*': list the frontend address, e.g. https://cognify.example.com")
+        if not _ORIGIN.match(origin):
+            raise RuntimeError(
+                f"CORS_ORIGINS has {entry.strip()!r}, which is not an origin. Use scheme and host only, "
+                "comma separated, e.g. http://localhost:3000,https://cognify.example.com"
+            )
+        if origin not in origins:
+            origins.append(origin)
+    return origins
 
 
 def tutor_mode(env: Mapping[str, str] = os.environ) -> str:
@@ -59,7 +85,7 @@ app = FastAPI(title="FutureEd API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -53,7 +53,7 @@ def _free_port() -> int:
 
 
 def _clean_env(**extra: str) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("AWS_", "TUTOR_", "DEMO_"))}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("AWS_", "TUTOR_", "DEMO_", "CORS_"))}
     env.update(PYTHONPATH=str(BACKEND), AUTOSEED="true", PYDANTIC_AI_NO_BANNER="1", AWS_EC2_METADATA_DISABLED="true")
     env.update(extra)
     return env
