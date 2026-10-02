@@ -28,6 +28,8 @@ const shade = (h: string, f: number) => {
   const c = rgb(h).map((v) => Math.max(0, Math.min(255, v * f)) | 0);
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 };
+import { FrameWatch } from "./framewatch";
+
 // Small seeded random generator, so the bookshelves look the same every time.
 const rng = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
 
@@ -56,17 +58,51 @@ class Room {
   private resizeTimer = 0;
   private themeTimer = 0;
   private last = 0; // time of the last drawn frame
+  private paused = false; // the page is covered (Progress drawer, seal): nothing here can be seen moving
+  private visible = true;
+  // Low-power mode for weak devices: the dust stays where it is and the two slow lights hold still.
+  // It starts on touch screens, or after a few seconds of frames that cannot keep up (FrameWatch).
+  private low = false;
+  private watch = new FrameWatch();
   private accent2 = [255, 255, 255]; // mote colour, read once per theme (reading CSS every frame is slow)
 
   private onMove = (e: PointerEvent) => {
     if (e.pointerType === "touch" || this.reduce || !this.el) return;
     this.tx = e.clientX;
     this.ty = e.clientY;
+    // In low-power mode the loop sleeps while nothing moves; the cursor wakes it to move the light.
+    if (this.low && !this.raf) this.resume();
     if (!this.moved) {
       this.moved = true;
       this.el.cursor.style.opacity = this.ambient ? "1" : "0";
     }
   };
+
+  private onVisibility = () => {
+    this.visible = document.visibilityState === "visible";
+    this.resume();
+  };
+
+  /** Stop the room while it is covered; it keeps showing its last frame. */
+  setPaused(paused: boolean) {
+    this.paused = paused;
+    this.resume();
+  }
+
+  private resume() {
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    if (!this.el || this.reduce || this.paused || !this.visible) return;
+    this.last = 0;
+    this.watch.reset();
+    this.raf = requestAnimationFrame(this.frame);
+  }
+
+  private enterLowPower() {
+    if (this.low || !this.el) return;
+    this.low = true;
+    this.el.stage.dataset.power = "low"; // globals.css pauses the candle and the beam where they are
+  }
 
   private onResize = () => {
     clearTimeout(this.resizeTimer);
@@ -85,12 +121,20 @@ class Room {
     el.veil.style.transform = `translate(${this.cx}px,${this.cy}px)`;
     el.cursor.style.transform = `translate(${this.cx}px,${this.cy}px)`;
     el.cursor.style.opacity = this.touch ? "1" : "0";
-    cancelAnimationFrame(this.raf);
-    this.raf = requestAnimationFrame(this.frame);
+    this.visible = document.visibilityState === "visible";
+    // Reduced motion: one still frame of dust, no drifting, no breathing lights.
+    if (this.reduce) this.drawMotes(0);
+    if (this.touch) {
+      this.enterLowPower();
+      this.drawMotes(0);
+    }
+    this.resume();
     addEventListener("pointermove", this.onMove, { passive: true });
     addEventListener("resize", this.onResize);
+    document.addEventListener("visibilitychange", this.onVisibility);
     return () => {
       cancelAnimationFrame(this.raf);
+      document.removeEventListener("visibilitychange", this.onVisibility);
       clearTimeout(this.resizeTimer);
       clearTimeout(this.themeTimer);
       removeEventListener("pointermove", this.onMove);
@@ -102,6 +146,7 @@ class Room {
   private paint() {
     this.drawScene();
     this.sizeMotes();
+    if (this.reduce || this.paused || this.low) this.drawMotes(0);
   }
 
   private drawScene() {
@@ -222,17 +267,17 @@ class Room {
 
   private frame = (t: number) => {
     const el = this.el;
-    const mx = this.mx;
-    if (!el || !mx) return;
+    if (!el || !this.mx) return;
+    if (!this.low && this.watch.tick(t)) this.enterLowPower();
     // About 24 frames a second is plenty for drifting dust and a slow light.
     const elapsed = t - this.last;
-    if (elapsed < 40) {
+    if (this.last && elapsed < 40) {
       this.raf = requestAnimationFrame(this.frame);
       return;
     }
-    this.last = t;
-    const steps = Math.min(elapsed / 16.67, 5); // how many 60 fps frames this one stands for
-    if (this.touch && !this.reduce) {
+    const steps = this.last ? Math.min(elapsed / 16.67, 5) : 1;
+    this.last = t; // how many 60 fps frames this one stands for
+    if (this.touch && !this.reduce && !this.low) {
       // Touch screens have no cursor, so the light drifts by itself.
       this.tx = innerWidth * (0.5 + 0.38 * Math.sin(t / 5200));
       this.ty = innerHeight * (0.36 + 0.26 * Math.cos(t / 6900));
@@ -249,7 +294,19 @@ class Room {
       const nx = this.cx / innerWidth - 0.5;
       const ny = this.cy / innerHeight - 0.5;
       el.scene.style.transform = `scale(1.05) translate(${(-nx * 16).toFixed(1)}px,${(-ny * 10).toFixed(1)}px)`;
+    } else if (this.low) {
+      // Low power and the light has settled: nothing left to move, so the loop sleeps.
+      this.raf = 0;
+      return;
     }
+    if (!this.low) this.drawMotes(steps);
+    this.raf = requestAnimationFrame(this.frame);
+  };
+
+  /** Dust motes, brighter where the light is. `steps` is how far they drift (0: draw them where they are). */
+  private drawMotes(steps: number) {
+    const mx = this.mx;
+    if (!mx) return;
     mx.clearRect(0, 0, innerWidth, innerHeight);
     if (this.ambient) {
       const ac = this.accent2;
@@ -270,8 +327,7 @@ class Room {
         mx.fill();
       }
     }
-    this.raf = requestAnimationFrame(this.frame);
-  };
+  }
 
   /** A burst of golden sparks at a screen position. */
   burst(x0: number, y0: number, n = 170) {
@@ -320,6 +376,7 @@ class Room {
     clearTimeout(this.themeTimer);
     this.themeTimer = window.setTimeout(() => {
       this.drawScene();
+      if (this.reduce || this.paused || this.low) this.drawMotes(0); // the dust takes the new theme's colour too
       if (this.el) this.el.scene.style.opacity = "1";
     }, 220);
   }

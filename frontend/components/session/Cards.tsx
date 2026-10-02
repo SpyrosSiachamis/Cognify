@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { ApiError, Solution } from "@/lib/api";
 import { lookAt } from "@/lib/fx";
+import { friendlyError } from "@/lib/messages";
 import type { Widget } from "@/lib/tutor/types";
 import { Icon } from "../Icons";
 
@@ -90,20 +91,29 @@ export function StressCard({ widget, done, onSubmit }: { widget: Extract<Widget,
   );
 }
 
-export function ErrorCard({ error, onRetry }: { error: ApiError; onRetry?: () => void }) {
+export function ErrorCard({ error, onRetry, onRestart }: { error: ApiError; onRetry?: () => void; onRestart?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => lookAt(ref.current, "start"), []);
   return (
     <div className="icard" ref={ref} role="alert">
       <div className="paper stack">
         <div className="notyet show">
-          <b>Cognify could not answer.</b> {error.message}
-          {error.status ? ` (${error.code}, ${error.status})` : ` (${error.code})`}
+          <b>{friendlyError(error.code)}</b>
         </div>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          {error.status ? `${error.code} · ${error.status}` : error.code}
+        </p>
         {onRetry ? (
           <div className="row">
             <button className="btn btn-main" type="button" onClick={onRetry}>
               Try again <Icon id="i-arrow" className="arr" />
+            </button>
+          </div>
+        ) : error.code === "unknown_session" && onRestart ? (
+          // The backend restarted and forgot this session: start the same problem again in one click.
+          <div className="row">
+            <button className="btn btn-main" type="button" onClick={onRestart}>
+              Start this problem again <Icon id="i-arrow" className="arr" />
             </button>
           </div>
         ) : (

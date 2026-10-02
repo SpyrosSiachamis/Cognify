@@ -10,7 +10,7 @@ import { TutorMsg, YouMsg } from "./session/Messages";
 
 type Item =
   | { id: number; kind: "problem"; text: string }
-  | { id: number; kind: "tutor"; paragraphs: Rich[] | null } // null: Cognify is working (typing dots)
+  | { id: number; kind: "tutor"; paragraphs: Rich[] | null; progress?: boolean } // null: Cognify is working (typing dots)
   | { id: number; kind: "you"; text: string }
   | { id: number; kind: "widget"; widget: Widget; done: boolean }
   | { id: number; kind: "error"; error: ApiError }
@@ -71,9 +71,9 @@ export function SessionView({ tutor, onNewProblem }: { tutor: TutorService; onNe
     }
 
     /** Run one backend request with the typing dots showing. On failure: an error card and a Retry button. */
-    async function withRetry<T>(request: () => Promise<T>): Promise<T> {
+    async function withRetry<T>(request: () => Promise<T>, progress = false): Promise<T> {
       for (;;) {
-        const typing = add({ kind: "tutor", paragraphs: null });
+        const typing = add({ kind: "tutor", paragraphs: null, progress });
         try {
           const result = await request();
           alive();
@@ -142,7 +142,7 @@ export function SessionView({ tutor, onNewProblem }: { tutor: TutorService; onNe
         add({ kind: "you", text: input.text });
         dispatch({ type: "sent", text: input.text, first: !!input.first });
         const current = session;
-        turn = await withRetry(() => current!.send(input, controller.signal));
+        turn = await withRetry(() => current!.send(input, controller.signal), true);
         play(turn.beats);
       }
       setCanExit(false);
@@ -165,6 +165,8 @@ export function SessionView({ tutor, onNewProblem }: { tutor: TutorService; onNe
     waiting.current = null;
     resolve?.(input);
   };
+  // A new backend session for the same problem (after the backend lost the old one).
+  const restart = () => dispatch({ type: "startSession", now: Date.now() });
   const retry = () => {
     const resolve = retrying.current;
     retrying.current = null;
@@ -193,11 +195,11 @@ export function SessionView({ tutor, onNewProblem }: { tutor: TutorService; onNe
             case "problem":
               return <ProblemCard key={item.id} text={item.text} />;
             case "tutor":
-              return <TutorMsg key={item.id} paragraphs={item.paragraphs} />;
+              return <TutorMsg key={item.id} paragraphs={item.paragraphs} progress={item.progress} />;
             case "you":
               return <YouMsg key={item.id} text={item.text} />;
             case "error":
-              return <ErrorCard key={item.id} error={item.error} onRetry={item.error.retryable ? retry : undefined} />;
+              return <ErrorCard key={item.id} error={item.error} onRetry={item.error.retryable ? retry : undefined} onRestart={restart} />;
             case "solution":
               return <SolutionCard key={item.id} solution={item.solution} />;
             case "widget": {

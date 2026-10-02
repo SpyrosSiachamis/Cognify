@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TabId } from "@/lib/state";
-import { useApp } from "./AppProvider";
+import { useActions, useAppSelector } from "./AppProvider";
 import { Icon } from "./Icons";
 import { OverviewTab } from "./drawer/OverviewTab";
 import { ReasoningTab } from "./drawer/ReasoningTab";
@@ -24,9 +24,21 @@ const CONTENT: Record<TabId, () => ReactNode> = {
 };
 
 /* The right-hand sheet where all the analysis lives. ESC closes it and Tab stays inside it. */
-export function ProgressDrawer({ onRefresh }: { onRefresh: () => void }) {
-  const { state, dispatch } = useApp();
-  const open = state.sheetOpen;
+export const ProgressDrawer = memo(function ProgressDrawer({ onRefresh }: { onRefresh: () => void }) {
+  const { dispatch } = useActions();
+  const open = useAppSelector((s) => s.sheetOpen);
+  const tab = useAppSelector((s) => s.tab);
+  const sheetRev = useAppSelector((s) => s.sheetRev);
+  const views = useAppSelector((s) => s.views);
+  // The tab content (charts, the constellation) is only built while the drawer can be seen:
+  // while it is open, and for the slide-out after closing.
+  const [mounted, setMounted] = useState(open);
+  if (open && !mounted) setMounted(true);
+  useEffect(() => {
+    if (open || !mounted) return;
+    const t = setTimeout(() => setMounted(false), 600);
+    return () => clearTimeout(t);
+  }, [open, mounted]);
   const sheet = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
@@ -70,7 +82,7 @@ export function ProgressDrawer({ onRefresh }: { onRefresh: () => void }) {
   return (
     <>
       <div className={`scrim${open ? " show" : ""}`} onClick={closeSheet} />
-      <div className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={state.views.status}>
+      <div className={`sheet${open ? " show" : ""}`} ref={sheet} role="dialog" aria-modal="true" aria-label="Your progress" aria-hidden={!open} data-source={views.status}>
         <div className="sheet-head">
           <div>
             <h2>
@@ -84,16 +96,16 @@ export function ProgressDrawer({ onRefresh }: { onRefresh: () => void }) {
         </div>
         <div className="tabs" role="tablist">
           {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={state.tab === t.id} onClick={() => { dispatch({ type: "tab", tab: t.id }); body.current?.scrollTo({ top: 0 }); }}>
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => { dispatch({ type: "tab", tab: t.id }); body.current?.scrollTo({ top: 0 }); }}>
               {t.label}
             </button>
           ))}
         </div>
-        <div className="sheet-body" ref={body} key={`${state.tab}-${state.sheetRev}`}>
-          {CONTENT[state.tab]()}
+        <div className="sheet-body" ref={body} key={`${tab}-${sheetRev}`}>
+          {mounted && CONTENT[tab]()}
         </div>
         <div className="sheet-foot">
-          <span>{state.views.status === "ok" && state.views.data.learner.is_seeded ? "Includes seeded demo history (labelled “seeded”). This session is live." : "Everything here comes from the Cognify backend."}</span>
+          <span>{views.status === "ok" && views.data.learner.is_seeded ? "Includes seeded demo history (labelled “seeded”). This session is live." : "Everything here comes from the Cognify backend."}</span>
           <button className="btn-ghost" type="button" onClick={onRefresh}>
             <Icon id="i-undo" style={{ verticalAlign: -2, marginRight: 6 }} />
             Refresh
@@ -102,4 +114,4 @@ export function ProgressDrawer({ onRefresh }: { onRefresh: () => void }) {
       </div>
     </>
   );
-}
+});

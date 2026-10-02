@@ -681,24 +681,28 @@ def test_a_correct_subanswer_names_no_new_gap():
     assert d.main_gap is None and d.response_to == "tutor_question"
 
 
+PROBE_RULE = "When main_gap is null the reply is a probe"  # the start of the conditional probe line in reply_prompt.txt
+
+
 def test_the_verifier_gets_a_rule_only_where_it_applies():
     """The leak exception and the probe rule are sent only when they apply; any other check gets exactly the
     original prompt (an always-on extra rule shifted the verifier's other judgements)."""
-    import subprocess
     from pathlib import Path
 
     from app.verification.agent import reply_instructions
     from app.verification.schema import ReplyCheckInput
 
-    original = subprocess.run(
-        ["git", "show", "HEAD:backend/app/verification/reply_prompt.txt"], capture_output=True, text=True,
-        cwd=Path(__file__).parent,
-    ).stdout
+    # The prompt before the conditional lines were added (git show fce0b30:backend/app/verification/reply_prompt.txt),
+    # kept as a file: reading it from git HEAD only worked while the prompt change was uncommitted, and git is not
+    # installed in the Docker image. If the base prompt is changed on purpose, update this file in the same commit.
+    original = (Path(__file__).parent / "data" / "reply_prompt_original.txt").read_text(encoding="utf-8")
     teach = ReplyCheckInput(problem="p", attempt="a", reply="r", main_gap="procedure")
-    if original:  # (git is not always available, as in the container)
-        assert reply_instructions(teach) == original
+    assert reply_instructions(teach) == original
     assert "[if" not in reply_instructions(teach)
-    assert "student_demonstrated" not in reply_instructions(teach) and "is a probe" not in reply_instructions(teach)
+    # (the base prompt already says "...the reply is a probe question" in its field list, so the probe rule is
+    # recognised by its own sentence, not by the phrase "is a probe")
+    assert "student_demonstrated" not in reply_instructions(teach)
+    assert PROBE_RULE not in reply_instructions(teach)
     shown = teach.model_copy(update={"student_demonstrated": ["24 ÷ 6 = 4"]})
     assert "is not a leak: the student derived it" in reply_instructions(shown)
-    assert "is a probe" in reply_instructions(teach.model_copy(update={"main_gap": None}))
+    assert PROBE_RULE in reply_instructions(teach.model_copy(update={"main_gap": None}))

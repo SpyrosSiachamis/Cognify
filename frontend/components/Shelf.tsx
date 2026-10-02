@@ -1,15 +1,15 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import { provenConcepts } from "@/lib/backend";
-import { useApp } from "./AppProvider";
+import { useActions, useAppSelector } from "./AppProvider";
 
 const COLORS = ["--sp1", "--sp2", "--sp3", "--sp5"];
 
 /** One book for every concept the backend has as verified for this learner. */
-export function Shelf() {
-  const { state, dispatch } = useApp();
-  const views = state.views;
+export const Shelf = memo(function Shelf() {
+  const { dispatch } = useActions();
+  const views = useAppSelector((s) => s.views);
   const proven = views.status === "ok" ? provenConcepts(views.data.learner) : [];
   const seeded = views.status === "ok" && views.data.learner.is_seeded;
   const books = proven.map((c, i) => ({ n: c.name, h: 96 + ((c.name.length * 7) % 34), c: COLORS[i % COLORS.length] }));
@@ -43,4 +43,4 @@ export function Shelf() {
       </button>
     </div>
   );
-}
+});

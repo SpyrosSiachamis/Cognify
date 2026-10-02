@@ -2,12 +2,13 @@
 
 import { useRef } from "react";
 import { EXAMPLE_PROBLEM } from "@/lib/state";
-import { useApp } from "./AppProvider";
+import { useApp, useReplay } from "./AppProvider";
 import { Icon } from "./Icons";
 import { Shelf } from "./Shelf";
 
 export function Home({ onStart, onRetryViews }: { onStart: () => void; onRetryViews: () => void }) {
-  const { state, dispatch, replay } = useApp();
+  const { state, dispatch } = useApp();
+  const replay = useReplay();
   const field = useRef<HTMLTextAreaElement>(null);
   const views = state.views;
   const name = views.status === "ok" ? views.data.learner.display_name : null;

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { prefersReducedMotion } from "@/lib/fx";
 import { room } from "@/lib/room";
-import { useApp } from "./AppProvider";
+import { useAppSelector } from "./AppProvider";
 import { Icon } from "./Icons";
 
 /** The scalloped wax outline, centred on the seal's rings at (150, 150): radius 132 with 12 bumps of 10.
@@ -19,10 +19,10 @@ function waxOutline(cx = 150, cy = 150, radius = 132, bumps = 12, depth = 10, sa
 const WAX = waxOutline();
 
 /* The wax seal that stamps onto the screen when the backend returns a VERIFIED verdict. */
-export function SealOverlay({ onContinue }: { onContinue: () => void }) {
-  const { state } = useApp();
+export const SealOverlay = memo(function SealOverlay({ onContinue }: { onContinue: () => void }) {
   const go = useRef<HTMLButtonElement>(null);
-  const open = state.sealOpen;
+  const open = useAppSelector((s) => s.sealOpen);
+  const evidence = useAppSelector((s) => s.session.verdict?.evidence);
 
   // A flash of light and a burst of sparks once the seal has landed, then focus the button.
   useEffect(() => {
@@ -68,7 +68,7 @@ export function SealOverlay({ onContinue }: { onContinue: () => void }) {
         </svg>
         <div className="seal-copy">
           <div className="big">Verified</div>
-          <p>{state.session.verdict?.evidence ?? "You solved the fresh problem on your own."}</p>
+          <p>{evidence ?? "You solved the fresh problem on your own."}</p>
           <button className="btn btn-accent" type="button" ref={go} onClick={onContinue}>
             See what changed <Icon id="i-arrow" className="arr" />
           </button>
@@ -76,4 +76,4 @@ export function SealOverlay({ onContinue }: { onContinue: () => void }) {
       </div>
     </div>
   );
-}
+});

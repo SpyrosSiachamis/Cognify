@@ -1,0 +1,74 @@
+# Exact versions of every backend dependency, so a rebuild cannot change behaviour the week of the demo.
+# Used by the Dockerfile: pip install -r requirements.txt -c constraints.txt
+# Resolved for Python 3.13 (python:3.13-slim) on 2026-10-02 from requirements.txt, then verified: the full
+# backend test suite passes with exactly these versions.
+#
+# requirements.txt lists what we depend on; this file pins what that resolves to. To update after changing
+# requirements.txt or to take newer versions (then re-run the tests and docker compose up --build backend):
+#   docker build --no-cache --target base -t cognify-lock backend
+#   docker run --rm cognify-lock pip freeze | sort -f > /tmp/lock.txt
+#   (keep these comment lines, replace the package lines below with /tmp/lock.txt)
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+boto3==1.43.107
+botocore==1.43.107
+certifi==2026.7.22
+cffi==2.1.1
+click==8.5.0
+cryptography==50.0.2
+deprecation==2.1.0
+fastapi==0.142.2
+genai-prices==0.1.9
+griffelib==2.3.0
+h11==0.16.0
+h2==4.4.1
+hpack==4.2.0
+httpcore==1.0.9
+httpcore2==2.13.1
+httptools==0.8.0
+httpx==0.28.1
+httpx2==2.13.1
+hyperframe==6.1.0
+idna==3.20
+iniconfig==2.3.0
+jmespath==1.1.0
+logfire-api==5.1.1
+multidict==7.0.0
+opentelemetry-api==1.45.0
+packaging==26.3
+pluggy==1.6.0
+postgrest==2.31.0
+propcache==0.5.4
+psycopg==3.3.6
+psycopg-binary==3.3.6
+pycparser==3.0
+pydantic==2.13.5
+pydantic-ai-slim==2.53.0
+pydantic_core==2.46.5
+pydantic-graph==2.53.0
+pydantic-settings==2.15.0
+Pygments==2.21.0
+PyJWT==2.15.1
+pytest==9.1.1
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.4
+PyYAML==6.0.3
+realtime==2.31.0
+s3transfer==0.19.2
+six==1.17.0
+starlette==1.7.0
+storage3==2.31.0
+StrEnum==0.4.15
+supabase==2.31.0
+supabase-auth==2.31.0
+supabase-functions==2.31.0
+truststore==0.10.4
+typing_extensions==4.16.0
+typing-inspection==0.4.4
+urllib3==2.8.0
+uvicorn==0.54.0
+uvloop==0.23.0
+watchfiles==1.3.0
+websockets==15.0.1
+yarl==1.25.1
